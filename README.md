@@ -621,6 +621,4 @@ MIT License
 
 ---
 
-### Built with Azure AI Foundry, Foundry IQ, and Microsoft Agent Framework.
-
-### Designed for the Microsoft Agents League Hackathon 2026.
+### Built with Azure AI Foundry, Foundry IQ, and Microsoft Agent Framework
