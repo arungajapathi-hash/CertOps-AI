@@ -16,17 +16,6 @@ CertOps AI goes further.
 
 It evaluates readiness through a council of specialized AI agents, challenges assumptions, diagnoses misconceptions, measures prediction accuracy, and continuously improves future recommendations.
 
-Built for the **Microsoft Agents League Hackathon 2026** using:
-
-* Azure AI Foundry
-* Foundry IQ
-* Microsoft Agent Framework
-* GPT-4o
-* FastAPI
-* Streamlit
-
----
-
 # 💡 Problem
 
 Organizations invest heavily in certification programs but still struggle with:
