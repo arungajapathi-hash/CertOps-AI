@@ -1,0 +1,12 @@
+[
+  {"employee_id": "EMP-001", "meeting_hours_per_week": 12, "focus_hours_per_week": 16, "preferred_learning_slot": "Morning", "current_workload": "Medium"},
+  {"employee_id": "EMP-002", "meeting_hours_per_week": 20, "focus_hours_per_week": 10, "preferred_learning_slot": "Afternoon", "current_workload": "High"},
+  {"employee_id": "EMP-003", "meeting_hours_per_week": 10, "focus_hours_per_week": 18, "preferred_learning_slot": "Morning", "current_workload": "Low"},
+  {"employee_id": "EMP-004", "meeting_hours_per_week": 15, "focus_hours_per_week": 14, "preferred_learning_slot": "Evening", "current_workload": "Medium"},
+  {"employee_id": "EMP-005", "meeting_hours_per_week": 25, "focus_hours_per_week": 8, "preferred_learning_slot": "Afternoon", "current_workload": "High"},
+  {"employee_id": "EMP-006", "meeting_hours_per_week": 11, "focus_hours_per_week": 19, "preferred_learning_slot": "Morning", "current_workload": "Low"},
+  {"employee_id": "EMP-007", "meeting_hours_per_week": 18, "focus_hours_per_week": 12, "preferred_learning_slot": "Evening", "current_workload": "Medium"},
+  {"employee_id": "EMP-008", "meeting_hours_per_week": 14, "focus_hours_per_week": 15, "preferred_learning_slot": "Morning", "current_workload": "Medium"},
+  {"employee_id": "EMP-009", "meeting_hours_per_week": 22, "focus_hours_per_week": 9, "preferred_learning_slot": "Afternoon", "current_workload": "High"},
+  {"employee_id": "EMP-010", "meeting_hours_per_week": 17, "focus_hours_per_week": 13, "preferred_learning_slot": "Evening", "current_workload": "Medium"}
+]

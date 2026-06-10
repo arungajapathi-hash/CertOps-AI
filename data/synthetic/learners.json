@@ -1,0 +1,92 @@
+[
+  {
+    "learner_id": "L-1001",
+    "role": "Cloud Engineer",
+    "certification": "AZ-204",
+    "practice_score_avg": 82,
+    "hours_studied": 24,
+    "exam_outcome": "Pass",
+    "weak_topics": ["Authentication", "Azure Functions"]
+  },
+  {
+    "learner_id": "L-1002",
+    "role": "DevOps Engineer",
+    "certification": "AZ-400",
+    "practice_score_avg": 68,
+    "hours_studied": 18,
+    "exam_outcome": "Fail",
+    "weak_topics": ["Security", "Build and release pipelines"]
+  },
+  {
+    "learner_id": "L-1003",
+    "role": "Data Engineer",
+    "certification": "DP-203",
+    "practice_score_avg": 74,
+    "hours_studied": 20,
+    "exam_outcome": "Pass",
+    "weak_topics": ["Stream Processing"]
+  },
+  {
+    "learner_id": "L-1004",
+    "role": "Cloud Engineer",
+    "certification": "AZ-204",
+    "practice_score_avg": 58,
+    "hours_studied": 14,
+    "exam_outcome": "Fail",
+    "weak_topics": ["Storage", "Containers"]
+  },
+  {
+    "learner_id": "L-1005",
+    "role": "DevOps Engineer",
+    "certification": "AZ-400",
+    "practice_score_avg": 79,
+    "hours_studied": 26,
+    "exam_outcome": "Pass",
+    "weak_topics": ["Networking", "CI/CD"]
+  },
+  {
+    "learner_id": "L-1006",
+    "role": "Data Engineer",
+    "certification": "DP-203",
+    "practice_score_avg": 65,
+    "hours_studied": 16,
+    "exam_outcome": "Fail",
+    "weak_topics": ["Delta Lake", "Data Security"]
+  },
+  {
+    "learner_id": "L-1007",
+    "role": "Cloud Engineer",
+    "certification": "AZ-204",
+    "practice_score_avg": 84,
+    "hours_studied": 28,
+    "exam_outcome": "Pass",
+    "weak_topics": ["API Development"]
+  },
+  {
+    "learner_id": "L-1008",
+    "role": "DevOps Engineer",
+    "certification": "AZ-400",
+    "practice_score_avg": 71,
+    "hours_studied": 19,
+    "exam_outcome": "Pass",
+    "weak_topics": ["GitHub Actions", "Instrumentation"]
+  },
+  {
+    "learner_id": "L-1009",
+    "role": "Data Engineer",
+    "certification": "DP-203",
+    "practice_score_avg": 60,
+    "hours_studied": 12,
+    "exam_outcome": "Fail",
+    "weak_topics": ["Synapse", "Data Processing"]
+  },
+  {
+    "learner_id": "L-1010",
+    "role": "DevOps Engineer",
+    "certification": "AZ-400",
+    "practice_score_avg": 77,
+    "hours_studied": 22,
+    "exam_outcome": "Pass",
+    "weak_topics": ["Processes and communications"]
+  }
+]

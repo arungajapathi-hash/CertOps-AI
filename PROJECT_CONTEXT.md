@@ -1,0 +1,566 @@
+# CertOps AI — Project Context File
+> **This file is the single source of truth for all AI agents and developers working on this project.**
+> Read this entire file before writing any code, suggesting any changes, or making any architectural decisions.
+> Update this file after every development session.
+
+---
+
+## Last Updated
+- Date: 2026-06-09
+- Session: Foundry IQ Integration with Cascading Fallback — COMPLETE
+- Updated by: Arun
+
+---
+
+## Changelog
+- 2026-06-09 (Latest): Integrated Azure AI Foundry IQ as primary knowledge source with cascading fallback (Foundry → Dynamic Web/LLM → Offline). Created knowledge_router.py for clean abstraction. Updated LearningAgent with citation tracking. Added Streamlit badges showing knowledge source. Created helper script find_connection_string.py. Added USE_FOUNDRY_IQ feature flag.
+- 2026-06-09 (Earlier): Replaced KnowledgePlugin with DynamicKnowledgePlugin (web scraping + LLM fallback); made certification input free-text; fixed Study Windows duration display ("Noneh" → "1.5h"); StudyPlanAgent and EngagementAgent now fully dynamic; added beautifulsoup4, requests, lxml to requirements.
+- 2026-06-09 (Initial): Implemented SK kernel, KnowledgePlugin, HistoryPlugin, LearningAgent, StudyPlanAgent, EngagementAgent; wired into Orchestrator and FastAPI `/learn`; updated Streamlit Learner Dashboard.
+
+---
+
+## Project Identity
+
+| Field | Value |
+|---|---|
+| **Name** | CertOps AI |
+| **Full Title** | Self-Learning Certification Readiness Intelligence Platform |
+| **Hackathon** | Microsoft Agents League Hackathon 2026 |
+| **Track** | Reasoning Agents (Microsoft Foundry) |
+| **Deadline** | June 14, 2026 |
+| **GitHub** | https://github.com/arungajapathi-hash/CertOps-AI |
+| **Developer** | Arun (solo) |
+
+---
+
+## One-Sentence Architecture
+> CertOps AI uses a council of specialized reasoning agents to assess certification readiness, challenges their conclusions through structured debate, diagnoses failures through Socratic coaching, and continuously improves future recommendations using a reputation-based learning system.
+
+**Do not change this sentence. Use it verbatim in README, demo, and pitch.**
+
+---
+
+## Ideology — Non-Negotiable Principles
+
+1. **Agents debate, not report** — the council argues with each other. Output is a verdict from conflict, not a summary from consensus.
+2. **Grounded, not hallucinated** — every recommendation cites a source from Foundry IQ knowledge base.
+3. **System learns from failure** — every wrong prediction updates agent reputation. Future verdicts improve automatically.
+4. **Diagnose, don't just score** — when a learner fails, the system explains exactly why, not just what score they got.
+5. **Shared memory, no direct agent talk** — agents communicate only through shared memory dict. No agent calls another agent directly.
+
+---
+
+## Problem Statement
+Enterprise engineering teams manage certification programmes blindly. When engineers fail exams, nobody knows why. Study plans are generic. Managers have no real-time visibility. The same failures repeat every quarter.
+
+## Solution
+A multi-agent system that builds personalised study plans, convenes an adversarial readiness council before the exam, diagnoses failure root causes after, and improves its own accuracy over time using agent reputation scores.
+
+---
+
+## Tech Stack — FROZEN
+
+| Layer | Technology | Notes |
+|---|---|---|
+| Frontend | Streamlit | Community Cloud for hosting |
+| API | FastAPI | Thin layer only — 8 endpoints |
+| Agent Framework | Semantic Kernel (Python) 1.3.0 | SK Plugins for knowledge, history, assessment, reputation |
+| LLM | Azure OpenAI GPT-4o | Single deployment, all agents |
+| AI Platform | Azure AI Foundry | Primary knowledge source + orchestration |
+| Knowledge (Primary) | Foundry IQ (RAG) | Indexed certification documents, grounded retrieval |
+| Knowledge (Fallback) | DynamicKnowledgePlugin | Web scraping + LLM generation (cascading) |
+| Web Scraping | requests + BeautifulSoup4 + lxml | For Microsoft Learn exam objectives (fallback) |
+| Memory | SharedMemory class (Python dict) | In-memory per session |
+| Database | SQLite | 4 tables only — no exceptions |
+| Charts | Plotly | Agent reputation + readiness trend |
+| Config | python-dotenv | .env file |
+
+**Do not add new dependencies without updating this file and confirming with Arun.**
+
+---
+
+## Knowledge Retrieval Cascade — Design Pattern
+
+All certification knowledge flows through a **cascading fallback chain** designed for reliability + transparency:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ LearningAgent.execute() calls get_knowledge_plugin()            │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. FoundryKnowledgePlugin (Primary)                             │
+│    ├─ Attempts AIProjectClient.create_and_run_thread()          │
+│    ├─ Falls back to knowledge_bases.search()                    │
+│    └─ Returns: {"content": str, "citations": [], "source": ...} │
+│                                                                  │
+│ 2. DynamicKnowledgePlugin (Fallback-1) [if Foundry fails]       │
+│    ├─ Scrapes https://learn.microsoft.com (5s timeout)          │
+│    ├─ Falls back to LLM generation if scrape fails              │
+│    └─ Caches results per certification                          │
+│                                                                  │
+│ 3. Offline Hardcoded Guides (Fallback-2) [if Dynamic fails]     │
+│    ├─ AZ-204, AZ-400, DP-203, AZ-900 built-in                   │
+│    └─ Prevents complete failure                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Return Format** (Foundry IQ):
+```python
+{
+  "content": "Full exam guide...",
+  "citations": [
+    "https://learn.microsoft.com/azure-sdk-101",
+    "https://docs.microsoft.com/azure-functions-guide"
+  ],
+  "source": "Foundry IQ"  # Used for transparency badge in UI
+}
+```
+
+**Feature Flag**: `USE_FOUNDRY_IQ=true` in .env controls plugin selection:
+- `true` → FoundryKnowledgePlugin (recommended for production)
+- `false` → DynamicKnowledgePlugin (useful for development/testing)
+
+---
+
+## Environment Variables
+
+```env
+# === Azure OpenAI (LLM) ===
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_API_VERSION=2025-04-14
+
+# === Azure AI Foundry IQ (Primary Knowledge) ===
+# Feature flag: true = use Foundry IQ, false = use DynamicKnowledgePlugin
+USE_FOUNDRY_IQ=true
+
+# Foundry project settings (get from Azure Portal)
+AZURE_FOUNDRY_PROJECT_NAME=certops-ai
+AZURE_FOUNDRY_HUB=certops-ai-resource
+AZURE_FOUNDRY_RESOURCE_GROUP=rg-arungajapathi-3294
+AZURE_FOUNDRY_REGION=eastus
+AZURE_FOUNDRY_KNOWLEDGE_BASE=certops-knowledge
+AZURE_FOUNDRY_SEARCH_SERVICE=certopsaisrcho5ibpj
+
+# Required for Foundry connection string construction
+AZURE_SUBSCRIPTION_ID=your-subscription-id
+AZURE_FOUNDRY_CONNECTION_STRING=  # Leave empty to auto-construct from components above
+
+# === Database ===
+DATABASE_PATH=./certops.db
+```
+
+---
+
+## Foundry IQ Configuration — Quick Start
+
+To enable Azure AI Foundry IQ as primary knowledge source:
+
+1. **Get Subscription ID**:
+   ```bash
+   az account show --query id
+   ```
+
+2. **Add to .env**:
+   ```env
+   USE_FOUNDRY_IQ=true
+   AZURE_SUBSCRIPTION_ID=<your-id>
+   ```
+
+3. **Verify Connection**:
+   ```bash
+   python scripts/find_connection_string.py
+   ```
+
+4. **Verify in Code**:
+   ```python
+   from backend.plugins.knowledge_router import get_knowledge_plugin
+   plugin = get_knowledge_plugin()  # Returns FoundryKnowledgePlugin if enabled
+   guide = plugin.get_certification_guide("AZ-204")
+   print(guide["source"])  # Should be "Foundry IQ"
+   ```
+
+---
+
+## Dynamic Certification Support
+
+**Frontend** now accepts free-text certification input (no whitelist):
+- Users type any certification name (e.g., "AZ-204", "AWS-SOA", "CKA")
+- Backend converts to uppercase
+- Knowledge retrieval uses cascading fallback chain
+
+**Example Flow**:
+1. User enters "AZ-204"
+2. LearningAgent calls `get_knowledge_plugin().get_certification_guide("AZ-204")`
+3. If Foundry IQ unavailable → tries web scraping → tries LLM → falls back to hardcoded
+4. Returns guide with source attribution ("Foundry IQ" | "Dynamic Web" | "LLM Knowledge" | "Offline Fallback")
+5. Streamlit displays corresponding badge (⚡ | 🌐 | 🤖 | 📚)
+- **Transparency**: Memory includes `knowledge_source` to show which layer was used
+- **Speed**: Offline fallback prevents timeouts
+
+---
+
+```
+certops-ai/
+├── PROJECT_CONTEXT.md          ← THIS FILE — always read first
+├── README.md                   ← Hackathon submission README
+├── .env.example
+├── .gitignore
+├── requirements.txt
+├── backend/
+│   ├── __init__.py
+│   ├── main.py                 ← FastAPI app
+│   ├── database.py             ← SQLite init + queries
+│   ├── memory.py               ← SharedMemory class
+│   ├── orchestrator.py         ← Agent orchestration logic
+│   └── agents/
+│       ├── __init__.py
+│       ├── base_agent.py       ← BaseAgent all agents inherit
+│       ├── learning_agent.py
+│       ├── study_plan_agent.py
+│       ├── engagement_agent.py
+│       ├── assessment_agent.py
+│       ├── socratic_coach.py
+│       ├── reflection_agent.py
+│       ├── manager_insights.py
+│       ├── reputation/
+│       │   └── engine.py
+│       └── council/
+│           ├── __init__.py
+│           ├── optimist.py
+│           ├── skeptic.py
+│           ├── advocate.py
+│           ├── historian.py
+│           ├── risk_analyst.py
+│           └── critic.py
+├── frontend/
+│   └── app.py                  ← Streamlit UI — 7 pages
+├── data/
+│   ├── synthetic/
+│   │   ├── learners.json
+│   │   ├── work_signals.json
+│   │   └── certifications.json
+│   └── knowledge/
+│       ├── az204_guide.md
+│       ├── az400_guide.md
+│       └── dp203_guide.md
+└── docs/
+    └── architecture.md
+```
+
+---
+
+## Agent Roster — Complete List
+
+| # | Agent | File | Role | Model | SK Plugin |
+|---|---|---|---|---|---|
+| 1 | Learning Agent | learning_agent.py | Query Foundry IQ, build skill map | GPT-4o | FoundryKnowledgePlugin |
+| 2 | Study Plan Agent | study_plan_agent.py | Convert skills + time into week-by-week plan | GPT-4o | — |
+| 3 | Engagement Agent | engagement_agent.py | Recommend study windows from work signals | GPT-4o | — |
+| 4 | Optimist | council/optimist.py | Argues WHY learner CAN pass | GPT-4o | — |
+| 5 | Skeptic | council/skeptic.py | Argues WHY learner WILL fail | GPT-4o | — |
+| 6 | Advocate | council/advocate.py | Checks practical constraints — workload, stress | GPT-4o | — |
+| 7 | Historian | council/historian.py | Finds similar past learners from SQLite | GPT-4o | HistoryPlugin |
+| 8 | Risk Analyst | council/risk_analyst.py | Calculates topic coverage gaps + schedule risk | GPT-4o | — |
+| 9 | Critic | council/critic.py | Synthesises 5 council votes using reputation weights | GPT-4o | ReputationPlugin |
+| 10 | Assessment Agent | assessment_agent.py | Generates grounded mock questions + scores | GPT-4o | AssessmentPlugin |
+| 11 | Socratic Coach | socratic_coach.py | Diagnoses misconceptions via guided questions | GPT-4o | — |
+| 12 | Reflection Agent | reflection_agent.py | Compares prediction vs outcome, updates reputation | GPT-4o | ReputationPlugin |
+| 13 | Manager Insights | manager_insights.py | Team readiness summary from SQLite | GPT-4o | — |
+
+**Total: 13 agents. Do not add more without updating this file.**
+
+---
+
+## Semantic Kernel Plugins
+
+| Plugin | File | Purpose | Used By |
+|---|---|---|---|
+| FoundryKnowledgePlugin | plugins/foundry_knowledge_plugin.py | **PRIMARY**: Query Azure AI Foundry IQ for certified, web-grounded content with citations. Cascades to DynamicKnowledgePlugin → Offline on failure. | Learning Agent |
+| DynamicKnowledgePlugin | plugins/dynamic_knowledge_plugin.py | **FALLBACK-1**: Scrape MS Learn (5s timeout). Falls back to LLM generation. Caches results. | FoundryKnowledgePlugin (cascading) |
+| knowledge_router.py | plugins/knowledge_router.py | **FACTORY**: Selects plugin based on `USE_FOUNDRY_IQ` env flag. Single import point. | All agents |
+| HistoryPlugin | plugins/history_plugin.py | Find similar learners from SQLite history by certification/score/hours | Historian Agent |
+| AssessmentPlugin | plugins/assessment_plugin.py | Generate questions + score answers | Assessment Agent |
+| ReputationPlugin | plugins/reputation_plugin.py | Compute council voting weights from success rates | Critic Agent, Reflection Agent |
+
+---
+
+## Shared Memory Schema — FROZEN
+
+```python
+{
+  "learner_id": "",           # string e.g. "L-1001"
+  "role": "",                 # string e.g. "Cloud Engineer"
+  "certification": "",        # string e.g. "AZ-204"
+  "target_weeks": 0,          # int
+  "skill_map": [],            # list of skill strings
+  "knowledge_source": "",     # string: "Foundry IQ" | "Dynamic Web" | "LLM Knowledge" | "Offline Fallback"
+  "citations": [],            # list of source URLs from Foundry IQ
+  "recommended_materials": [], # list of {title, section, url}
+  "study_plan": {},           # dict {week_1: [...], week_2: [...]}
+  "work_signals": {},         # dict {meeting_hours, focus_hours, slot}
+  "practice_score_avg": 0,    # float 0-100
+  "hours_studied": 0,         # int
+  "weak_topics": [],          # list of topic strings
+  "exam_domains": [],         # list of {domain, weight_percent, key_topics}
+  "council_votes": {},        # dict {agent_name: {verdict, confidence, evidence}}
+  "readiness_verdict": "",    # READY | NOT_READY | DELAY
+  "readiness_confidence": 0,  # float 0-100
+  "readiness_reasoning": "",  # string — critic explanation
+  "assessment_score": 0,      # float 0-100
+  "assessment_breakdown": {}, # dict {topic: score}
+  "assessment_outcome": "",   # PASS | FAIL
+  "misconceptions": [],       # list of strings
+  "socratic_questions": [],   # list of strings
+  "reflection": {},           # dict {prediction, actual, analysis}
+  "session_log": []           # list of log strings with timestamps
+}
+```
+
+**All agents read from and write to this dict only. No direct agent-to-agent calls.**
+
+---
+
+## Database Schema — FROZEN (4 tables only)
+
+```sql
+-- Table 1
+CREATE TABLE IF NOT EXISTS agent_reputation (
+  agent_name TEXT PRIMARY KEY,
+  accuracy_score REAL DEFAULT 75.0,
+  total_predictions INTEGER DEFAULT 0,
+  correct_predictions INTEGER DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 2
+CREATE TABLE IF NOT EXISTS predictions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  learner_id TEXT,
+  certification TEXT,
+  predicted_outcome TEXT,
+  confidence REAL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 3
+CREATE TABLE IF NOT EXISTS assessment_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  learner_id TEXT,
+  certification TEXT,
+  score REAL,
+  topic_breakdown TEXT,
+  outcome TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 4
+CREATE TABLE IF NOT EXISTS reflections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  learner_id TEXT,
+  predicted_outcome TEXT,
+  actual_outcome TEXT,
+  analysis TEXT,
+  agents_correct TEXT,
+  agents_wrong TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Seed agent_reputation with: optimist, skeptic, advocate, historian, risk_analyst at 75.0 on init.**
+
+---
+
+## FastAPI Endpoints — FROZEN
+
+| Method | Endpoint | Input | Output |
+|---|---|---|---|
+| POST | /learn | learner_id, role, certification, target_weeks | skill_map, study_plan |
+| POST | /readiness | learner_id | council_votes, verdict, confidence |
+| POST | /assessment | learner_id | score, topic_breakdown, outcome |
+| POST | /coaching | learner_id | misconceptions, socratic_questions |
+| POST | /reflection | learner_id, actual_outcome | accuracy, agents_correct, agents_wrong |
+| GET | /manager | — | team_readiness, at_risk, pass_rate |
+| GET | /reputation | — | agent accuracy scores |
+| GET | /health | — | status ok |
+
+---
+
+## Streamlit Pages — FROZEN
+
+| Page | Name | Key Feature |
+|---|---|---|
+| 1 | Learner Dashboard | Input goal → show skill map + study plan |
+| 2 ⭐ | Readiness Council | 5 agent cards side by side + critic verdict — DEMO HERO |
+| 3 | Assessment | Quiz + score + topic breakdown |
+| 4 | Coaching | Socratic questions — only shown on FAIL |
+| 5 | Manager Insights | Team readiness table + at-risk list |
+| 6 | Agent Reputation | Plotly bar chart of agent accuracy |
+| 7 | Reasoning Trace | Full agent execution log |
+
+**Page 2 is the visual centrepiece. Must show all 5 agent cards simultaneously.**
+
+**Dynamic Certification Support:** Certification input on Page 1 (Learner Dashboard) is now free-text. Users can enter ANY Microsoft certification (AZ-900, AZ-204, SC-900, MS-700, DP-203, etc.). DynamicKnowledgePlugin fetches exam objectives from Microsoft Learn or generates via LLM if needed. No hardcoded certification list.
+
+- **Language**: Python 3.11+
+- **Async**: Use async/await throughout FastAPI. Streamlit calls FastAPI via httpx async client.
+- **Agent pattern**: Every agent inherits BaseAgent. Every agent implements execute(memory: dict) -> dict.
+- **LLM calls**: Always in _call_llm() method on BaseAgent. Never call OpenAI directly from agent logic.
+- **Error handling**: Every LLM call wrapped in try/except. Return graceful fallback, never crash.
+- **Logging**: Every agent calls _append_log(memory, message) to write to session_log.
+- **Pydantic**: All FastAPI request/response bodies use Pydantic models.
+- **No hardcoded responses**: Every agent makes a real LLM call. No fake/mock data in agent logic.
+- **Synthetic data only**: All demo data uses fake IDs (L-1001, EMP-001). No real PII ever.
+- **Secrets**: Never commit .env. Always use environment variables.
+
+---
+
+## Council Agent Output Schema
+
+Every council agent returns this exact structure. Do not deviate:
+
+```python
+{
+  "agent": "optimist",           # agent name string
+  "verdict": "READY",            # READY | NOT_READY | DELAY
+  "confidence": 82,              # int 0-100
+  "evidence": [                  # list of 2-4 strings
+    "Practice score trending up 3 weeks",
+    "All high-weight domains above threshold"
+  ],
+  "recommendation": "Book exam within 5 days"  # one sentence
+}
+```
+
+---
+
+## Critic Agent Logic
+
+```
+1. Receive all 5 council votes
+2. Load agent reputation weights from SQLite via ReputationPlugin
+3. Weight each vote: weighted_confidence = vote.confidence * agent.accuracy_score
+4. Tally weighted votes by verdict (READY / NOT_READY / DELAY)
+5. Highest weighted tally wins
+6. If margin < 15% — output DELAY regardless
+7. Return: { verdict, confidence, reasoning, weighted_votes }
+```
+
+---
+
+## Reputation Engine Logic
+
+```
+- All agents start at 75.0% accuracy
+- After each assessment:
+    Reflection Agent compares: council predicted X, actual outcome was Y
+    For each agent: if prediction matched actual → correct_predictions += 1
+    accuracy_score = (correct_predictions / total_predictions) * 100
+- Critic uses current accuracy_score as weight when tallying council votes
+- Higher accuracy = more influence on final verdict
+```
+
+---
+
+## Foundry IQ Knowledge Base
+
+Contents (markdown files loaded as context):
+- az204_guide.md — AZ-204 study guide (synthetic)
+- az400_guide.md — AZ-400 study guide (synthetic)  
+- dp203_guide.md — DP-203 study guide (synthetic)
+
+Every response from Learning Agent and Assessment Agent must cite:
+- Source document name
+- Section name
+- Key finding
+
+---
+
+## What Is Built ✅ / In Progress 🔄 / Not Started ❌
+
+| Component | Status | Notes |
+|---|---|---|
+| Folder structure | ✅ | Done |
+| .env.example | ✅ | Done |
+| requirements.txt | ✅ | Done |
+| database.py | ✅ | Done |
+| memory.py | ✅ | Done |
+| base_agent.py | ✅ | Done |
+| main.py (FastAPI) | ✅ | Stubs done |
+| orchestrator.py | ✅ | Stubs done |
+| frontend/app.py | ✅ | Placeholders done |
+| Synthetic data files | ✅ | Done |
+| Knowledge base guides | ✅ | Done |
+| Learning Agent | ✅ | Basic skill-map generation implemented |
+| Study Plan Agent | ✅ | Week-by-week planner implemented |
+| Engagement Agent | ✅ | Work-signal based windows implemented |
+| Council (5 agents) | ❌ | Day 3 |
+| Critic Agent | ❌ | Day 4 |
+| Assessment Agent | ❌ | Day 5 |
+| Socratic Coach | ❌ | Day 5 |
+| Reflection Agent | ❌ | Day 6 |
+| Reputation Engine | ❌ | Day 6 |
+| Manager Insights | ❌ | Day 7 |
+| Streamlit UI full | ❌ | Day 7 |
+| Foundry IQ integration | ✅ | KnowledgePlugin added |
+| Observability / tracing | ❌ | Day 7 |
+| README final | ❌ | Day 8 |
+| Demo video | ❌ | Day 8 |
+
+---
+
+## Explicit Constraints — Do NOT Do These
+
+- ❌ Do not add more than 4 SQLite tables
+- ❌ Do not add direct agent-to-agent communication
+- ❌ Do not add real user data or PII
+- ❌ Do not add authentication/login
+- ❌ Do not add multi-tenant support
+- ❌ Do not add Fabric IQ or Work IQ real integrations (roadmap only)
+- ❌ Do not add OpenTelemetry (use Foundry tracing only)
+- ❌ Do not add fine-tuning or model training
+- ❌ Do not add a separate Knowledge Evolution Engine (roadmap)
+- ❌ Do not hardcode LLM responses — every agent makes a real call
+- ❌ Do not add new pages to Streamlit beyond the 7 defined
+- ❌ Do not add new API endpoints beyond the 8 defined
+- ❌ Do not change the shared memory schema without updating this file
+
+---
+
+## Roadmap (Post-Hackathon Only)
+
+- Real Work IQ integration (calendar, meeting signals)
+- Real Fabric IQ semantic layer
+- Knowledge Evolution Engine (pattern learning)
+- Multi-model council (DeepSeek R1, Claude, o1-mini per agent)
+- Multi-tenant support
+- Teams / Copilot integration via the FastAPI layer
+- OpenTelemetry observability
+
+---
+
+## Changelog
+
+| Date | Session | What Changed |
+|---|---|---|
+| 2026-06-09 | Session 1 | Initial project context created. Scaffold built. Architecture locked. |
+
+---
+
+## How To Use This File
+
+**Before every coding session:**
+Read this file top to bottom. Understand what's built. Understand what's next.
+
+**Before writing any code:**
+Check the constraints section. Check the frozen schemas. Do not deviate.
+
+**After every coding session:**
+Update the build status table. Add a changelog entry. Commit this file with your code.
+
+**For any AI agent (Copilot, Windsurf, ChatGPT, Claude):**
+Paste this file as context before giving any instruction. Say: "Read PROJECT_CONTEXT.md first. Then do the following task."
+
+---
+
+*CertOps AI — Built for Microsoft Agents League Hackathon 2026*

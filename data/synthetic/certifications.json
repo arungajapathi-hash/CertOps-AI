@@ -1,0 +1,43 @@
+{
+  "AZ-204": {
+    "title": "Developing Solutions for Microsoft Azure",
+    "role": "Cloud Engineer",
+    "skills": ["API Development", "Azure Functions", "Storage", "Authentication", "Containers"],
+    "recommended_hours": 20,
+    "pass_threshold": 70,
+    "domains": [
+      {"name": "Develop Azure compute solutions", "weight": 25},
+      {"name": "Develop for Azure storage", "weight": 15},
+      {"name": "Implement Azure security", "weight": 20},
+      {"name": "Monitor, troubleshoot and optimize", "weight": 15},
+      {"name": "Connect to and consume Azure services", "weight": 25}
+    ]
+  },
+  "AZ-400": {
+    "title": "Designing and Implementing Microsoft DevOps Solutions",
+    "role": "DevOps Engineer",
+    "skills": ["CI/CD", "Monitoring", "GitHub Actions", "Networking", "IaC", "Security"],
+    "recommended_hours": 25,
+    "pass_threshold": 70,
+    "domains": [
+      {"name": "Configure processes and communications", "weight": 10},
+      {"name": "Design and implement source control", "weight": 15},
+      {"name": "Design and implement build and release pipelines", "weight": 40},
+      {"name": "Develop a security and compliance plan", "weight": 20},
+      {"name": "Implement an instrumentation strategy", "weight": 15}
+    ]
+  },
+  "DP-203": {
+    "title": "Data Engineering on Microsoft Azure",
+    "role": "Data Engineer",
+    "skills": ["Data Pipelines", "Spark", "Synapse", "Delta Lake", "Stream Processing"],
+    "recommended_hours": 22,
+    "pass_threshold": 70,
+    "domains": [
+      {"name": "Design and implement data storage", "weight": 40},
+      {"name": "Design and develop data processing", "weight": 25},
+      {"name": "Design and implement data security", "weight": 20},
+      {"name": "Monitor and optimize data storage", "weight": 15}
+    ]
+  }
+}

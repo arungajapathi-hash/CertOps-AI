@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+streamlit
+openai
+semantic-kernel
+pydantic
+python-dotenv
+plotly
+pandas
+httpx
+aiohttp
+requests
+beautifulsoup4
+lxml
+azure-ai-projects
+azure-identity
