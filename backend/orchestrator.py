@@ -13,6 +13,9 @@ from backend.agents.council.risk_analyst import RiskAnalystAgent
 from backend.agents.council.critic import CriticAgent
 from backend.agents.assessment_agent import AssessmentAgent
 from backend.agents.socratic_coach import SocraticCoach
+from backend.agents.reflection_agent import ReflectionAgent
+from backend.agents.manager_insights import ManagerInsightsAgent
+from backend.reputation.engine import ReputationEngine
 
 
 class Orchestrator:
@@ -31,9 +34,14 @@ class Orchestrator:
         self.risk_analyst = None
         self.critic = None
         
-        # Assessment and coaching agents
+        # Assessment, coaching and reflection agents
         self.assessment_agent = None
         self.socratic_coach = None
+        self.reflection_agent = None
+        
+        # Manager insights
+        self.manager_insights = ManagerInsightsAgent()
+        self.reputation = ReputationEngine()
 
     def _log(self, agent_name: str) -> None:
         print(f"[ORCHESTRATOR] Calling {agent_name}")
@@ -203,3 +211,33 @@ class Orchestrator:
             "remediation": mem.get("remediation", {}),
             "session_log": mem.get("session_log", []),
         }
+
+    async def run_reflection_phase(self, learner_id: str, actual_outcome: str) -> Dict:
+        """Run reflection to compare prediction vs actual and update reputations."""
+        mem = self.memory.to_dict()
+        
+        # Verify learner matches
+        if not mem.get("learner_id") or mem["learner_id"] != learner_id:
+            raise ValueError("Learner ID mismatch")
+        
+        # Lazy instantiation
+        if self.reflection_agent is None:
+            self.reflection_agent = ReflectionAgent()
+        
+        self._log("ReflectionAgent (self-learning analysis)")
+        mem["assessment_outcome"] = actual_outcome
+        mem = await self.reflection_agent.execute(mem)
+        
+        # Update main memory
+        self.memory.update(mem)
+        
+        return {
+            "learner_id": learner_id,
+            "reflection": mem.get("reflection", {}),
+            "updated_reputation": self.reputation.get_all_scores(),
+            "session_log": mem.get("session_log", []),
+        }
+
+    def get_manager_insights(self) -> Dict:
+        """Get team-level insights from manager analytics."""
+        return self.manager_insights.get_insights()

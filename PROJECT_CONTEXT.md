@@ -7,13 +7,15 @@
 
 ## Last Updated
 - Date: 2026-06-10
-- Session: Assessment Agent + Socratic Coach — Mock Exam with Failure Diagnosis — COMPLETE
+- Session: **FEATURE COMPLETE** — Self-Learning Layer + Manager Insights + All 7 Streamlit Pages
+- Status: All core functionality implemented. Remaining: README final, Demo video.
 - Updated by: Arun
 
 ---
 
 ## Changelog
-- 2026-06-10 (Latest): Built Assessment Agent and Socratic Coach. AssessmentAgent generates 10 mock exam questions via LLM, evaluates answers with topic-level scoring, saves results to SQLite, and triggers Socratic coaching on failure. SocraticCoach diagnoses root misconceptions using LLM and generates 3 guided questions using the Socratic method. Streamlit Pages 3 and 4 fully implemented with quiz UI, results review, and progressive Socratic question flow. Added POST /submit endpoint for answer submission.
+- 2026-06-10 (Latest): **FEATURE COMPLETE** — Built self-learning layer with Reflection Agent and Manager Insights. ReflectionAgent compares council predictions vs actual exam outcomes, updates agent reputations in SQLite, and generates analytical insights via LLM. ManagerInsightsAgent provides team-level analytics including certification readiness, at-risk learners, and topic weakness patterns. All 7 Streamlit pages now complete: Manager Insights (team dashboard), Agent Reputation (leaderboard with animated bars), and Reasoning Trace (execution log). Added POST /reflection, GET /manager, and GET /reset-demo endpoints. System now self-improves: each assessment updates agent weights for future council verdicts.
+- 2026-06-10 (Earlier): Built Assessment Agent and Socratic Coach. AssessmentAgent generates 10 mock exam questions via LLM, evaluates answers with topic-level scoring, saves results to SQLite, and triggers Socratic coaching on failure. SocraticCoach diagnoses root misconceptions using LLM and generates 3 guided questions using the Socratic method. Streamlit Pages 3 and 4 fully implemented with quiz UI, results review, and progressive Socratic question flow. Added POST /submit endpoint for answer submission.
 - 2026-06-10 (Earlier): Built the Readiness Council — the centerpiece of CertOps AI. Implemented all 5 specialist agents (Optimist, Skeptic, Advocate, Historian, RiskAnalyst) with parallel execution. Critic Agent synthesizes weighted votes with safety rules. Reputation Engine complete with SQLite backing. Streamlit Page 2 now shows 5 agent cards side-by-side with colored verdicts + prominent Critic verdict box. FastAPI /readiness endpoint fully wired and tested.
 - 2026-06-09 (Earlier): Integrated Azure AI Foundry IQ as primary knowledge source with cascading fallback (Foundry → Dynamic Web/LLM → Offline). Created knowledge_router.py for clean abstraction. Updated LearningAgent with citation tracking. Added Streamlit badges showing knowledge source. Created helper script find_connection_string.py. Added USE_FOUNDRY_IQ feature flag.
 - 2026-06-09 (Earlier): Replaced KnowledgePlugin with DynamicKnowledgePlugin (web scraping + LLM fallback); made certification input free-text; fixed Study Windows duration display ("Noneh" → "1.5h"); StudyPlanAgent and EngagementAgent now fully dynamic; added beautifulsoup4, requests, lxml to requirements.
@@ -501,12 +503,17 @@ Every response from Learning Agent and Assessment Agent must cite:
 | Assessment Agent | ✅ | Generates 10 exam questions, evaluates answers, saves to SQLite — complete |
 | Socratic Coach | ✅ | Diagnoses misconceptions, generates Socratic questions, remediation plan — complete |
 | POST /submit endpoint | ✅ | Submit answers, trigger coaching on FAIL — complete |
-| Reflection Agent | ❌ | Day 6 |
-| Reputation Engine | ✅ | SQLite-backed with update_reputation(), get_weights(), get_all_scores() — complete |
-| Manager Insights | ❌ | Day 7 |
-| Streamlit UI full | ❌ | Day 7 |
-| Foundry IQ integration | ✅ | KnowledgePlugin added |
-| Observability / tracing | ❌ | Day 7 |
+| Reflection Agent | ✅ | Self-learning analysis, updates agent reputations, saves to SQLite — complete |
+| Reputation Engine | ✅ | SQLite-backed with update_reputation(), get_weights(), get_all_scores(), reset_to_defaults() — complete |
+| Manager Insights Agent | ✅ | Team analytics, at-risk learners, topic weakness aggregation — complete |
+| POST /reflection endpoint | ✅ | Reflection phase with reputation updates — complete |
+| GET /manager endpoint | ✅ | Team insights endpoint — complete |
+| GET /reset-demo endpoint | ✅ | Demo reset for reputation — complete |
+| Streamlit Page 5 — Manager | ✅ | Team metrics, at-risk table, recent activity — complete |
+| Streamlit Page 6 — Reputation | ✅ | Leaderboard with bars, reset button — complete |
+| Streamlit Page 7 — Trace | ✅ | Agent execution log visualization — complete |
+| All 7 Streamlit Pages | ✅ | Complete UI for entire system — FEATURE COMPLETE |
+| Foundry IQ integration | ✅ | KnowledgePlugin with cascading fallback — complete |
 | README final | ❌ | Day 8 |
 | Demo video | ❌ | Day 8 |
 

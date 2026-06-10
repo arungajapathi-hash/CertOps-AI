@@ -152,45 +152,40 @@ async def coaching(payload: CoachingRequest) -> Dict[str, Any]:
 
 @app.post("/reflection")
 async def reflection(payload: ReflectionRequest) -> Dict[str, Any]:
-    memory = get_session_memory(payload.learner_id)
-    memory.set("actual_outcome", payload.actual_outcome)
-    orchestrator.reflect_outcome(memory.to_dict())
-    return {
-        "prediction_accuracy": 0.0,
-        "agents_correct": [],
-        "agents_wrong": [],
-    }
+    try:
+        result = await orchestrator.run_reflection_phase(
+            learner_id=payload.learner_id,
+            actual_outcome=payload.actual_outcome
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/manager")
 async def manager() -> Dict[str, Any]:
-    orchestrator.manager_overview({})
-    return {
-        "team_readiness": [],
-        "at_risk": [],
-        "pass_rate": 0,
-        "weak_areas": [],
-    }
+    return orchestrator.get_manager_insights()
 
 
 @app.get("/reputation")
 async def reputation() -> Dict[str, Any]:
-    conn = database.get_connection()
-    cursor = conn.cursor()
-    rows = cursor.execute(
-        "SELECT agent_name, accuracy_score, total_predictions, correct_predictions FROM agent_reputation"
-    ).fetchall()
-    conn.close()
-    agents = [
-        {
-            "name": row["agent_name"],
-            "accuracy": row["accuracy_score"],
-            "total": row["total_predictions"],
-            "correct": row["correct_predictions"],
-        }
-        for row in rows
-    ]
-    return {"agents": agents}
+    return {
+        "agents": orchestrator.reputation.get_all_scores(),
+        "summary": orchestrator.reputation.get_reputation_summary()
+    }
+
+
+@app.get("/reset-demo")
+async def reset_demo() -> Dict[str, str]:
+    orchestrator.memory.reset()
+    success = orchestrator.reputation.reset_to_defaults()
+    return {
+        "status": "Demo reset complete" if success else "Reset failed",
+        "memory": "cleared",
+        "reputation": "reset to defaults"
+    }
 
 
 @app.get("/health")

@@ -103,28 +103,53 @@ class ReputationEngine:
         try:
             scores = self.get_all_scores()
             summary = {}
-            
+
             for score_record in scores:
                 agent_name = score_record["agent_name"]
                 total = int(score_record["total_predictions"])
                 correct = int(score_record["correct_predictions"])
                 accuracy = float(score_record["accuracy_score"])
-                
-                # Determine trend (simplified - would need historical data for real trend)
-                trend = "stable"
-                if correct > total * 0.8:
+
+                # Determine trend based on accuracy score
+                if accuracy >= 80:
+                    trend = "strong"
+                elif accuracy >= 70:
                     trend = "improving"
-                elif correct < total * 0.6:
-                    trend = "declining"
-                
+                else:
+                    trend = "needs data"
+
                 summary[agent_name] = {
-                    "accuracy": accuracy,
+                    "accuracy": round(accuracy, 1),
                     "total": total,
                     "correct": correct,
                     "trend": trend
                 }
-            
+
             return summary
         except Exception as e:
             print(f"[ReputationEngine] Error generating summary: {e}")
             return {}
+
+    def reset_to_defaults(self) -> bool:
+        """Reset all agent reputations to default values (75%)."""
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            for agent_name in DEFAULT_AGENTS:
+                cursor.execute("""
+                    UPDATE agent_reputation
+                    SET accuracy_score = 75.0,
+                        total_predictions = 0,
+                        correct_predictions = 0,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE agent_name = ?
+                """, (agent_name,))
+
+            conn.commit()
+            conn.close()
+            print("[ReputationEngine] Reset all agents to defaults (75%)")
+            return True
+        except Exception as e:
+            print(f"[ReputationEngine] Error resetting to defaults: {e}")
+            return False
