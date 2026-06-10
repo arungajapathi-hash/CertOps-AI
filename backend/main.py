@@ -38,6 +38,10 @@ class LearnerRequest(BaseModel):
     learner_id: str
 
 
+class ReadinessRequest(BaseModel):
+    learner_id: str
+
+
 class ReflectionRequest(BaseModel):
     learner_id: str
     actual_outcome: str
@@ -84,15 +88,16 @@ async def learn(payload: LearnRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 @app.post("/readiness")
-async def readiness(payload: LearnerRequest) -> Dict[str, Any]:
-    memory = get_session_memory(payload.learner_id)
-    orchestrator.evaluate_readiness(memory.to_dict())
-    return {
-        "council_votes": memory.get("council_votes"),
-        "verdict": memory.get("readiness_verdict"),
-        "confidence": memory.get("readiness_confidence"),
-        "reasoning": memory.get("readiness_reasoning"),
-    }
+async def readiness(payload: ReadinessRequest) -> Dict[str, Any]:
+    try:
+        result = await orchestrator.run_readiness_phase(
+            learner_id=payload.learner_id
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/assessment")

@@ -6,14 +6,15 @@
 ---
 
 ## Last Updated
-- Date: 2026-06-09
-- Session: Foundry IQ Integration with Cascading Fallback — COMPLETE
+- Date: 2026-06-10
+- Session: Readiness Council — 5 Specialist Agents with Critic Synthesis — COMPLETE
 - Updated by: Arun
 
 ---
 
 ## Changelog
-- 2026-06-09 (Latest): Integrated Azure AI Foundry IQ as primary knowledge source with cascading fallback (Foundry → Dynamic Web/LLM → Offline). Created knowledge_router.py for clean abstraction. Updated LearningAgent with citation tracking. Added Streamlit badges showing knowledge source. Created helper script find_connection_string.py. Added USE_FOUNDRY_IQ feature flag.
+- 2026-06-10 (Latest): Built the Readiness Council — the centerpiece of CertOps AI. Implemented all 5 specialist agents (Optimist, Skeptic, Advocate, Historian, RiskAnalyst) with parallel execution. Critic Agent synthesizes weighted votes with safety rules. Reputation Engine complete with SQLite backing. Streamlit Page 2 now shows 5 agent cards side-by-side with colored verdicts + prominent Critic verdict box. FastAPI /readiness endpoint fully wired and tested.
+- 2026-06-09 (Earlier): Integrated Azure AI Foundry IQ as primary knowledge source with cascading fallback (Foundry → Dynamic Web/LLM → Offline). Created knowledge_router.py for clean abstraction. Updated LearningAgent with citation tracking. Added Streamlit badges showing knowledge source. Created helper script find_connection_string.py. Added USE_FOUNDRY_IQ feature flag.
 - 2026-06-09 (Earlier): Replaced KnowledgePlugin with DynamicKnowledgePlugin (web scraping + LLM fallback); made certification input free-text; fixed Study Windows duration display ("Noneh" → "1.5h"); StudyPlanAgent and EngagementAgent now fully dynamic; added beautifulsoup4, requests, lxml to requirements.
 - 2026-06-09 (Initial): Implemented SK kernel, KnowledgePlugin, HistoryPlugin, LearningAgent, StudyPlanAgent, EngagementAgent; wired into Orchestrator and FastAPI `/learn`; updated Streamlit Learner Dashboard.
 
@@ -494,12 +495,12 @@ Every response from Learning Agent and Assessment Agent must cite:
 | Learning Agent | ✅ | Basic skill-map generation implemented |
 | Study Plan Agent | ✅ | Week-by-week planner implemented |
 | Engagement Agent | ✅ | Work-signal based windows implemented |
-| Council (5 agents) | ❌ | Day 3 |
-| Critic Agent | ❌ | Day 4 |
+| Council (5 agents) | ✅ | Optimist, Skeptic, Advocate, Historian, Risk Analyst — complete with parallel execution |
+| Critic Agent | ✅ | Weighted vote synthesis with safety rules — complete |
 | Assessment Agent | ❌ | Day 5 |
 | Socratic Coach | ❌ | Day 5 |
 | Reflection Agent | ❌ | Day 6 |
-| Reputation Engine | ❌ | Day 6 |
+| Reputation Engine | ✅ | SQLite-backed with update_reputation(), get_weights(), get_all_scores() — complete |
 | Manager Insights | ❌ | Day 7 |
 | Streamlit UI full | ❌ | Day 7 |
 | Foundry IQ integration | ✅ | KnowledgePlugin added |

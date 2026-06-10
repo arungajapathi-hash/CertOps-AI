@@ -5,6 +5,12 @@ from backend.memory import SharedMemory
 from backend.agents.learning_agent import LearningAgent
 from backend.agents.study_plan_agent import StudyPlanAgent
 from backend.agents.engagement_agent import EngagementAgent
+from backend.agents.council.optimist import OptimistAgent
+from backend.agents.council.skeptic import SkepticAgent
+from backend.agents.council.advocate import AdvocateAgent
+from backend.agents.council.historian import HistorianAgent
+from backend.agents.council.risk_analyst import RiskAnalystAgent
+from backend.agents.council.critic import CriticAgent
 
 
 class Orchestrator:
@@ -14,6 +20,14 @@ class Orchestrator:
         self.learning_agent = None
         self.study_plan_agent = None
         self.engagement_agent = None
+        
+        # Council agents for readiness phase
+        self.optimist = None
+        self.skeptic = None
+        self.advocate = None
+        self.historian = None
+        self.risk_analyst = None
+        self.critic = None
 
     def _log(self, agent_name: str) -> None:
         print(f"[ORCHESTRATOR] Calling {agent_name}")
@@ -61,4 +75,59 @@ class Orchestrator:
             "recommended_materials": mem.get("recommended_materials"),
             "session_log": mem.get("session_log"),
             "status": "learning_phase_complete",
+        }
+
+    async def run_readiness_phase(self, learner_id: str) -> Dict:
+        """Run the Readiness Council — 5 agents debate in parallel, Critic decides."""
+        mem = self.memory.to_dict()
+        
+        # Verify memory has learning phase data
+        if not mem.get("learner_id") or mem["learner_id"] != learner_id:
+            raise ValueError("Run learning phase first with the same learner_id")
+        
+        # Lazy instantiation of council agents
+        if self.optimist is None:
+            self.optimist = OptimistAgent()
+        if self.skeptic is None:
+            self.skeptic = SkepticAgent()
+        if self.advocate is None:
+            self.advocate = AdvocateAgent()
+        if self.historian is None:
+            self.historian = HistorianAgent()
+        if self.risk_analyst is None:
+            self.risk_analyst = RiskAnalystAgent()
+        if self.critic is None:
+            self.critic = CriticAgent()
+        
+        # Step 1: Run all 5 council agents IN PARALLEL
+        self._log("Council agents (parallel execution)")
+        results = await asyncio.gather(
+            self.optimist.execute(mem.copy()),
+            self.skeptic.execute(mem.copy()),
+            self.advocate.execute(mem.copy()),
+            self.historian.execute(mem.copy()),
+            self.risk_analyst.execute(mem.copy()),
+            return_exceptions=True
+        )
+        
+        # Step 2: Merge council votes from all results
+        for result in results:
+            if isinstance(result, dict) and "council_votes" in result:
+                mem["council_votes"].update(result["council_votes"])
+        
+        # Step 3: Run Critic sequentially (needs all votes)
+        self._log("CriticAgent (synthesis)")
+        mem = await self.critic.execute(mem)
+        
+        # Step 4: Update main memory
+        self.memory.update(mem)
+        
+        return {
+            "learner_id": learner_id,
+            "council_votes": mem.get("council_votes", {}),
+            "verdict": mem.get("readiness_verdict"),
+            "confidence": mem.get("readiness_confidence"),
+            "reasoning": mem.get("readiness_reasoning"),
+            "critic_output": mem.get("critic_output", {}),
+            "session_log": mem.get("session_log", []),
         }
