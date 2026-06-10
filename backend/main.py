@@ -47,6 +47,19 @@ class ReflectionRequest(BaseModel):
     actual_outcome: str
 
 
+class AssessmentRequest(BaseModel):
+    learner_id: str
+
+
+class SubmitRequest(BaseModel):
+    learner_id: str
+    answers: Dict[str, str]  # {"1": "A", "2": "C", ...}
+
+
+class CoachingRequest(BaseModel):
+    learner_id: str
+
+
 sessions: Dict[str, SharedMemory] = {}
 orchestrator = Orchestrator()
 
@@ -101,25 +114,39 @@ async def readiness(payload: ReadinessRequest) -> Dict[str, Any]:
 
 
 @app.post("/assessment")
-async def assessment(payload: LearnerRequest) -> Dict[str, Any]:
-    memory = get_session_memory(payload.learner_id)
-    orchestrator.run_assessment(memory.to_dict())
-    return {
-        "score": memory.get("assessment_score"),
-        "topic_breakdown": memory.get("assessment_breakdown"),
-        "outcome": memory.get("assessment_outcome"),
-        "questions": memory.get("socratic_questions"),
-    }
+async def assessment(payload: AssessmentRequest) -> Dict[str, Any]:
+    try:
+        result = await orchestrator.run_assessment_phase(
+            learner_id=payload.learner_id
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/submit")
+async def submit(payload: SubmitRequest) -> Dict[str, Any]:
+    try:
+        result = await orchestrator.submit_assessment(
+            learner_id=payload.learner_id,
+            answers=payload.answers
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/coaching")
-async def coaching(payload: LearnerRequest) -> Dict[str, Any]:
-    memory = get_session_memory(payload.learner_id)
-    orchestrator.coach_learner(memory.to_dict())
+async def coaching(payload: CoachingRequest) -> Dict[str, Any]:
+    mem = orchestrator.memory.to_dict()
     return {
-        "misconceptions": memory.get("misconceptions"),
-        "socratic_questions": memory.get("socratic_questions"),
-        "remediation": memory.get("recommended_materials"),
+        "misconceptions": mem.get("misconceptions", []),
+        "socratic_questions": mem.get("socratic_questions", []),
+        "remediation": mem.get("remediation", {}),
     }
 
 

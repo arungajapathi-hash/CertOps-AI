@@ -11,6 +11,8 @@ from backend.agents.council.advocate import AdvocateAgent
 from backend.agents.council.historian import HistorianAgent
 from backend.agents.council.risk_analyst import RiskAnalystAgent
 from backend.agents.council.critic import CriticAgent
+from backend.agents.assessment_agent import AssessmentAgent
+from backend.agents.socratic_coach import SocraticCoach
 
 
 class Orchestrator:
@@ -28,6 +30,10 @@ class Orchestrator:
         self.historian = None
         self.risk_analyst = None
         self.critic = None
+        
+        # Assessment and coaching agents
+        self.assessment_agent = None
+        self.socratic_coach = None
 
     def _log(self, agent_name: str) -> None:
         print(f"[ORCHESTRATOR] Calling {agent_name}")
@@ -129,5 +135,71 @@ class Orchestrator:
             "confidence": mem.get("readiness_confidence"),
             "reasoning": mem.get("readiness_reasoning"),
             "critic_output": mem.get("critic_output", {}),
+            "session_log": mem.get("session_log", []),
+        }
+
+    async def run_assessment_phase(self, learner_id: str) -> Dict:
+        """Generate assessment questions for the learner."""
+        mem = self.memory.to_dict()
+        
+        # Verify memory has learning phase data
+        if not mem.get("learner_id") or mem["learner_id"] != learner_id:
+            raise ValueError("Run learning phase first with the same learner_id")
+        
+        # Lazy instantiation
+        if self.assessment_agent is None:
+            self.assessment_agent = AssessmentAgent()
+        
+        self._log("AssessmentAgent (generate questions)")
+        mem = await self.assessment_agent.execute(mem)
+        
+        # Update main memory
+        self.memory.update(mem)
+        
+        return {
+            "learner_id": learner_id,
+            "certification": mem.get("certification"),
+            "questions": mem.get("assessment_questions", []),
+            "status": "questions_ready",
+            "session_log": mem.get("session_log", []),
+        }
+
+    async def submit_assessment(self, learner_id: str, answers: Dict) -> Dict:
+        """Submit answers and get results with optional Socratic coaching."""
+        mem = self.memory.to_dict()
+        
+        # Verify learner matches
+        if not mem.get("learner_id") or mem["learner_id"] != learner_id:
+            raise ValueError("Learner ID mismatch")
+        
+        # Lazy instantiation
+        if self.assessment_agent is None:
+            self.assessment_agent = AssessmentAgent()
+        if self.socratic_coach is None:
+            self.socratic_coach = SocraticCoach()
+        
+        # Evaluate answers
+        self._log("AssessmentAgent (evaluate answers)")
+        mem["last_answers"] = answers
+        mem = await self.assessment_agent.evaluate(mem, answers)
+        
+        # Trigger Socratic Coach on FAIL
+        socratic_triggered = mem.get("assessment_outcome") == "FAIL"
+        if socratic_triggered:
+            self._log("SocraticCoach (diagnose misconceptions)")
+            mem = await self.socratic_coach.execute(mem)
+        
+        # Update main memory
+        self.memory.update(mem)
+        
+        return {
+            "learner_id": learner_id,
+            "score": mem.get("assessment_score"),
+            "outcome": mem.get("assessment_outcome"),
+            "topic_breakdown": mem.get("assessment_breakdown"),
+            "socratic_triggered": socratic_triggered,
+            "misconceptions": mem.get("misconceptions", []),
+            "socratic_questions": mem.get("socratic_questions", []),
+            "remediation": mem.get("remediation", {}),
             "session_log": mem.get("session_log", []),
         }

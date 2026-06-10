@@ -7,13 +7,14 @@
 
 ## Last Updated
 - Date: 2026-06-10
-- Session: Readiness Council — 5 Specialist Agents with Critic Synthesis — COMPLETE
+- Session: Assessment Agent + Socratic Coach — Mock Exam with Failure Diagnosis — COMPLETE
 - Updated by: Arun
 
 ---
 
 ## Changelog
-- 2026-06-10 (Latest): Built the Readiness Council — the centerpiece of CertOps AI. Implemented all 5 specialist agents (Optimist, Skeptic, Advocate, Historian, RiskAnalyst) with parallel execution. Critic Agent synthesizes weighted votes with safety rules. Reputation Engine complete with SQLite backing. Streamlit Page 2 now shows 5 agent cards side-by-side with colored verdicts + prominent Critic verdict box. FastAPI /readiness endpoint fully wired and tested.
+- 2026-06-10 (Latest): Built Assessment Agent and Socratic Coach. AssessmentAgent generates 10 mock exam questions via LLM, evaluates answers with topic-level scoring, saves results to SQLite, and triggers Socratic coaching on failure. SocraticCoach diagnoses root misconceptions using LLM and generates 3 guided questions using the Socratic method. Streamlit Pages 3 and 4 fully implemented with quiz UI, results review, and progressive Socratic question flow. Added POST /submit endpoint for answer submission.
+- 2026-06-10 (Earlier): Built the Readiness Council — the centerpiece of CertOps AI. Implemented all 5 specialist agents (Optimist, Skeptic, Advocate, Historian, RiskAnalyst) with parallel execution. Critic Agent synthesizes weighted votes with safety rules. Reputation Engine complete with SQLite backing. Streamlit Page 2 now shows 5 agent cards side-by-side with colored verdicts + prominent Critic verdict box. FastAPI /readiness endpoint fully wired and tested.
 - 2026-06-09 (Earlier): Integrated Azure AI Foundry IQ as primary knowledge source with cascading fallback (Foundry → Dynamic Web/LLM → Offline). Created knowledge_router.py for clean abstraction. Updated LearningAgent with citation tracking. Added Streamlit badges showing knowledge source. Created helper script find_connection_string.py. Added USE_FOUNDRY_IQ feature flag.
 - 2026-06-09 (Earlier): Replaced KnowledgePlugin with DynamicKnowledgePlugin (web scraping + LLM fallback); made certification input free-text; fixed Study Windows duration display ("Noneh" → "1.5h"); StudyPlanAgent and EngagementAgent now fully dynamic; added beautifulsoup4, requests, lxml to requirements.
 - 2026-06-09 (Initial): Implemented SK kernel, KnowledgePlugin, HistoryPlugin, LearningAgent, StudyPlanAgent, EngagementAgent; wired into Orchestrator and FastAPI `/learn`; updated Streamlit Learner Dashboard.
@@ -497,8 +498,9 @@ Every response from Learning Agent and Assessment Agent must cite:
 | Engagement Agent | ✅ | Work-signal based windows implemented |
 | Council (5 agents) | ✅ | Optimist, Skeptic, Advocate, Historian, Risk Analyst — complete with parallel execution |
 | Critic Agent | ✅ | Weighted vote synthesis with safety rules — complete |
-| Assessment Agent | ❌ | Day 5 |
-| Socratic Coach | ❌ | Day 5 |
+| Assessment Agent | ✅ | Generates 10 exam questions, evaluates answers, saves to SQLite — complete |
+| Socratic Coach | ✅ | Diagnoses misconceptions, generates Socratic questions, remediation plan — complete |
+| POST /submit endpoint | ✅ | Submit answers, trigger coaching on FAIL — complete |
 | Reflection Agent | ❌ | Day 6 |
 | Reputation Engine | ✅ | SQLite-backed with update_reputation(), get_weights(), get_all_scores() — complete |
 | Manager Insights | ❌ | Day 7 |

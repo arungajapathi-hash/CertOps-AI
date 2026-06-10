@@ -346,16 +346,305 @@ elif selected_page == "Agent Reputation":
 
 elif selected_page == "Assessment":
     st.markdown("### 📝 Assessment")
-    st.info("Assessment module coming soon — generates mock questions and scores answers.")
+    st.markdown("Complete a 10-question mock exam. Questions focus on your weak topics.")
     
     learner_id = st.text_input("Learner ID", value="L-1001", key="assessment_learner")
     
-    if st.button("📝 Start Assessment", use_container_width=True):
-        st.info("Assessment endpoint not yet implemented. Coming in Day 5.")
+    # Initialize session state
+    if "assessment_questions" not in st.session_state:
+        st.session_state.assessment_questions = []
+    if "assessment_answers" not in st.session_state:
+        st.session_state.assessment_answers = {}
+    if "assessment_submitted" not in st.session_state:
+        st.session_state.assessment_submitted = False
+    if "assessment_results" not in st.session_state:
+        st.session_state.assessment_results = None
+    
+    # Phase 1: Generate questions
+    if not st.session_state.assessment_questions and not st.session_state.assessment_submitted:
+        if st.button("📝 Start Mock Exam", use_container_width=True, type="primary"):
+            with st.spinner("Generating questions..."):
+                try:
+                    resp = httpx.post(
+                        "http://localhost:8000/assessment",
+                        json={"learner_id": learner_id},
+                        timeout=60.0
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    st.session_state.assessment_questions = data.get("questions", [])
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"❌ Error: {exc}")
+    
+    # Phase 2: Show quiz
+    if st.session_state.assessment_questions and not st.session_state.assessment_submitted:
+        questions = st.session_state.assessment_questions
+        cert = questions[0].get("topic", "Certification") if questions else "Exam"
+        
+        st.markdown(f"#### {cert} Mock Exam — {len(questions)} Questions")
+        
+        # Progress bar
+        answered = len([a for a in st.session_state.assessment_answers.values() if a])
+        progress = answered / len(questions) if questions else 0
+        st.progress(progress, text=f"Answered {answered}/{len(questions)}")
+        
+        # Show each question
+        for q in questions:
+            q_id = str(q.get("id", ""))
+            topic = q.get("topic", "General")
+            question_text = q.get("question", "")
+            options = q.get("options", {})
+            
+            with st.container():
+                st.markdown(f"**Q{q_id}** — `{topic}`")
+                st.write(question_text)
+                
+                # Radio for options
+                option_list = [f"{k}: {v}" for k, v in options.items()]
+                current = st.session_state.assessment_answers.get(q_id, "")
+                
+                selected = st.radio(
+                    "Select answer:",
+                    option_list,
+                    key=f"q_{q_id}",
+                    index=option_list.index(f"{current}: {options.get(current, '')}") if current in options else None,
+                    label_visibility="collapsed"
+                )
+                
+                # Parse selection
+                if selected:
+                    answer_letter = selected.split(":")[0]
+                    st.session_state.assessment_answers[q_id] = answer_letter
+                
+                st.divider()
+        
+        # Submit button (only when all answered)
+        if answered == len(questions):
+            if st.button("✅ Submit Exam", use_container_width=True, type="primary"):
+                with st.spinner("Evaluating answers..."):
+                    try:
+                        resp = httpx.post(
+                            "http://localhost:8000/submit",
+                            json={
+                                "learner_id": learner_id,
+                                "answers": st.session_state.assessment_answers
+                            },
+                            timeout=60.0
+                        )
+                        resp.raise_for_status()
+                        st.session_state.assessment_results = resp.json()
+                        st.session_state.assessment_submitted = True
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"❌ Error submitting: {exc}")
+        else:
+            st.warning(f"Please answer all {len(questions)} questions before submitting. ({len(questions) - answered} remaining)")
+    
+    # Phase 3: Show results
+    if st.session_state.assessment_submitted and st.session_state.assessment_results:
+        results = st.session_state.assessment_results
+        score = results.get("score", 0)
+        outcome = results.get("outcome", "UNKNOWN")
+        breakdown = results.get("topic_breakdown", {})
+        questions = st.session_state.assessment_questions
+        answers = st.session_state.assessment_answers
+        
+        # Score display
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if outcome == "PASS":
+                st.success(f"## 🎉 PASS — {score:.1f}%")
+                st.balloons()
+            else:
+                st.error(f"## ❌ FAIL — {score:.1f}%")
+                st.info("The Socratic Coach is available on the Coaching page to help you improve.")
+        
+        # Topic breakdown
+        if breakdown:
+            st.markdown("#### 📊 Topic Breakdown")
+            for topic, data in breakdown.items():
+                t_score = data.get("score", 0)
+                correct = data.get("correct", 0)
+                total = data.get("total", 0)
+                color = "green" if t_score >= 70 else "red"
+                st.markdown(f"**{topic}:** <span style='color:{color}'>{t_score:.0f}%</span> ({correct}/{total})", unsafe_allow_html=True)
+        
+        # Question review
+        st.markdown("#### 📝 Question Review")
+        for q in questions:
+            q_id = str(q.get("id", ""))
+            correct_answer = q.get("correct_answer", "")
+            user_answer = answers.get(q_id, "")
+            is_correct = user_answer == correct_answer
+            
+            emoji = "✅" if is_correct else "❌"
+            border = "2px solid #22c55e" if is_correct else "2px solid #ef4444"
+            
+            with st.container():
+                st.markdown(f"""
+                <div style="border: {border}; border-radius: 8px; padding: 12px; margin-bottom: 8px; background: #1f2937;">
+                    <div style="font-weight: bold; color: #e5e7eb;">{emoji} Q{q_id} — {q.get('topic', '')}</div>
+                    <div style="color: #d1d5db; margin: 8px 0;">{q.get('question', '')}</div>
+                    <div style="font-size: 12px; color: #9ca3af;">
+                        Your answer: <b style="color: {'#4ade80' if is_correct else '#f87171'}">{user_answer or 'None'}</b> | 
+                        Correct: <b style="color: #4ade80;">{correct_answer}</b>
+                    </div>
+                    <div style="font-size: 11px; color: #9ca3af; margin-top: 8px; border-top: 1px solid #374151; padding-top: 8px;">
+                        {q.get('explanation', '')}
+                    </div>
+                    <div style="font-size: 10px; color: #6b7280; margin-top: 4px;">
+                        📚 Source: {q.get('source', 'N/A')}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Reset button
+        if st.button("🔄 Retake Assessment"):
+            st.session_state.assessment_questions = []
+            st.session_state.assessment_answers = {}
+            st.session_state.assessment_submitted = False
+            st.session_state.assessment_results = None
+            st.rerun()
 
 elif selected_page == "Coaching":
-    st.markdown("### 🎓 Socratic Coaching")
-    st.info("Coaching module coming soon — diagnoses misconceptions via guided questions.")
+    st.markdown("### 🎓 Socratic Coach — Learning Diagnosis")
+    
+    # Check if assessment was failed
+    mem_outcome = st.session_state.get("assessment_results", {}).get("outcome", "")
+    socratic_triggered = st.session_state.get("assessment_results", {}).get("socratic_triggered", False)
+    
+    if not socratic_triggered:
+        st.info("📋 Complete an assessment first and achieve a score below 70% to unlock Socratic coaching.")
+        
+        # Show button to fetch coaching data anyway
+        if st.button("🔄 Check for Coaching Data"):
+            try:
+                resp = httpx.post(
+                    "http://localhost:8000/coaching",
+                    json={"learner_id": "L-1001"},
+                    timeout=10.0
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("misconceptions"):
+                    st.session_state.coaching_data = data
+                    st.rerun()
+                else:
+                    st.warning("No coaching data available. Take an assessment first.")
+            except Exception as exc:
+                st.warning(f"Could not fetch coaching data: {exc}")
+        
+        # Check if we have cached coaching data
+        if "coaching_data" in st.session_state:
+            st.markdown("---")
+            st.success("Coaching data found!")
+    else:
+        # Get coaching data
+        coaching_data = st.session_state.get("assessment_results", {})
+        misconceptions = coaching_data.get("misconceptions", [])
+        socratic_questions = coaching_data.get("socratic_questions", [])
+        remediation = coaching_data.get("remediation", {})
+        
+        # Section 1: Root Misconception
+        if misconceptions:
+            st.error(f"🎯 **Root Misconception:** {misconceptions[0]}")
+        
+        # Section 2: Socratic Questions
+        if socratic_questions:
+            st.markdown("#### ❓ Socratic Questions")
+            st.markdown("*Answer these questions to discover your own understanding.*")
+            
+            # Track active question
+            if "active_question" not in st.session_state:
+                st.session_state.active_question = 0
+            if "question_answers" not in st.session_state:
+                st.session_state.question_answers = {}
+            
+            active_idx = st.session_state.active_question
+            
+            # Show progress
+            st.progress((active_idx + 1) / len(socratic_questions), text=f"Question {active_idx + 1} of {len(socratic_questions)}")
+            
+            # Show current question
+            if active_idx < len(socratic_questions):
+                q = socratic_questions[active_idx]
+                
+                with st.container():
+                    st.markdown(f"**Question {active_idx + 1}:** {q.get('question', '')}")
+                    
+                    # Answer area
+                    answer = st.text_area(
+                        "Your reflection:",
+                        value=st.session_state.question_answers.get(active_idx, ""),
+                        key=f"reflection_{active_idx}",
+                        height=100
+                    )
+                    st.session_state.question_answers[active_idx] = answer
+                    
+                    # Hint expander
+                    with st.expander("💡 Need a hint?"):
+                        st.info(q.get("hint", "Think about the core concepts."))
+                        st.caption(f"*This leads to: {q.get('leads_to', 'Deeper understanding')}*")
+                    
+                    # Navigation
+                    cols = st.columns([1, 1])
+                    with cols[0]:
+                        if active_idx > 0 and st.button("⬅️ Previous"):
+                            st.session_state.active_question = active_idx - 1
+                            st.rerun()
+                    with cols[1]:
+                        if active_idx < len(socratic_questions) - 1:
+                            if st.button("Next ➡️"):
+                                st.session_state.active_question = active_idx + 1
+                                st.rerun()
+                        else:
+                            if st.button("✅ Finish"):
+                                st.session_state.socratic_complete = True
+                                st.rerun()
+        
+        # Section 3: Remediation Plan
+        if st.session_state.get("socratic_complete") or not socratic_questions:
+            st.markdown("---")
+            st.markdown("#### 📋 Remediation Plan")
+            
+            if remediation:
+                focus_areas = remediation.get("focus_areas", [])
+                if focus_areas:
+                    st.markdown("**🎯 Focus Areas:**")
+                    for area in focus_areas:
+                        st.markdown(f"- `{area}`")
+                
+                approach = remediation.get("study_approach", "")
+                if approach:
+                    st.markdown(f"**📖 Study Approach:** {approach}")
+                
+                hours = remediation.get("estimated_hours", 0)
+                if hours:
+                    st.metric("Estimated Study Time", f"{hours} hours")
+                
+                message = remediation.get("confidence_message", "")
+                if message:
+                    st.success(f"💪 {message}")
+            
+            # Next steps
+            st.markdown("---")
+            st.markdown("#### 🚀 Next Steps")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Retake Assessment", use_container_width=True):
+                    # Clear assessment state
+                    for key in ["assessment_questions", "assessment_answers", "assessment_submitted", "assessment_results"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state.active_question = 0
+                    st.session_state.socratic_complete = False
+                    st.session_state.question_answers = {}
+                    st.rerun()
+            with col2:
+                st.button("📚 Update Study Plan", use_container_width=True, disabled=True,
+                         help="Coming soon — updates study plan with focus areas")
 
 elif selected_page == "Manager Insights":
     st.markdown("### 👔 Manager Insights")
