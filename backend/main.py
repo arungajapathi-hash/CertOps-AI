@@ -67,6 +67,11 @@ class PipelineRequest(BaseModel):
     target_weeks: int = 6
 
 
+class AdaptiveRequest(BaseModel):
+    learner_id: str
+    max_iterations: int = 3
+
+
 sessions: Dict[str, SharedMemory] = {}
 orchestrator = Orchestrator()
 
@@ -277,3 +282,24 @@ async def pipeline_status() -> Dict[str, Any]:
         "adaptations_made": len(mem.get("adaptations", [])),
         "is_complete": completed == total
     }
+
+
+@app.post("/adaptive")
+async def adaptive_loop(request: AdaptiveRequest) -> Dict[str, Any]:
+    """
+    Run adaptive learning loop that iterates assessment until
+    learner passes or max iterations reached.
+    
+    Each iteration:
+    1. Run assessment
+    2. If PASS → stop, return results
+    3. If FAIL → run Socratic coach, adapt learning plan, retry
+    """
+    try:
+        result = await orchestrator.run_adaptive_loop(
+            learner_id=request.learner_id,
+            max_iterations=request.max_iterations
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

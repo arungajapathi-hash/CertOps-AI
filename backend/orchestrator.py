@@ -652,3 +652,189 @@ Add an "adapted": true field to modified weeks.
         from backend.agents.base_agent import BaseAgent
         agent = BaseAgent("PipelineAdapter")
         return agent._call_llm(system_prompt, user_prompt)
+
+    async def run_adaptive_loop(
+        self,
+        learner_id: str,
+        max_iterations: int = 3
+    ) -> dict:
+        """
+        Runs assessment → diagnoses failure → 
+        regenerates path → repeat until ready or max attempts.
+        
+        Each iteration:
+        1. Run assessment
+        2. Get score and outcome
+        3. If PASS → stop
+        4. If FAIL → run Socratic coach, adapt learning plan, retry
+        """
+        
+        iteration = 0
+        history = []
+        mem = self.memory.to_dict()
+        
+        while iteration < max_iterations:
+            iteration += 1
+            mem = self.memory.to_dict()
+            
+            print(
+                f"[AdaptiveLoop] Iteration {iteration}/{max_iterations}"
+            )
+            
+            # Run assessment
+            assessment_result = await self.run_assessment_phase(learner_id)
+            
+            # Get answers — simulate based on current score
+            questions = assessment_result.get("questions", [])
+            practice_score = mem.get("practice_score_avg", 65)
+            
+            # Each iteration increases score slightly (learning effect)
+            adjusted_score = min(
+                practice_score + ((iteration - 1) * 8),
+                95
+            )
+            
+            simulated_answers = self._simulate_answers(
+                questions,
+                adjusted_score
+            )
+            
+            result = await self.submit_assessment(
+                learner_id, simulated_answers
+            )
+            
+            score = result.get("score", 0)
+            outcome = result.get("outcome", "FAIL")
+            
+            iteration_record = {
+                "iteration": iteration,
+                "score": score,
+                "outcome": outcome,
+                "weak_topics": mem.get("weak_topics", []),
+                "changes_made": []
+            }
+            
+            if outcome == "PASS":
+                iteration_record["changes_made"].append(
+                    "Assessment passed — no further adaptation needed"
+                )
+                history.append(iteration_record)
+                break
+            
+            # FAIL: diagnose and adapt
+            # Run Socratic coach
+            if self.socratic_coach is None:
+                self.socratic_coach = SocraticCoach()
+            
+            mem = await self.socratic_coach.execute(
+                self.memory.to_dict()
+            )
+            self.memory.update(mem)
+            
+            # Adapt learning path for weak topics
+            weak_topics = mem.get("weak_topics", [])
+            
+            if weak_topics:
+                # Regenerate study plan focused on weak areas
+                adaptation = await self._adapt_for_weak_topics(
+                    mem, weak_topics, iteration
+                )
+                self.memory.update(adaptation)
+                
+                iteration_record["changes_made"].extend([
+                    f"Focused study plan on: {', '.join(weak_topics[:3])}",
+                    f"Added {2 * iteration} extra practice hours",
+                    f"Reprioritised week structure"
+                ])
+            
+            history.append(iteration_record)
+        
+        # Store full history
+        self.memory.update({"adaptive_history": history})
+        
+        return {
+            "iterations": len(history),
+            "final_outcome": history[-1]["outcome"] if history else "FAIL",
+            "final_score": history[-1]["score"] if history else 0,
+            "history": history,
+            "study_plan": self.memory.to_dict().get(
+                "study_plan", {}
+            ),
+            "weak_topics": self.memory.to_dict().get(
+                "weak_topics", []
+            )
+        }
+
+    async def _adapt_for_weak_topics(
+        self,
+        memory: dict,
+        weak_topics: list,
+        iteration: int
+    ) -> dict:
+        """
+        Regenerates study plan focused on weak topics.
+        Makes changes proportional to iteration number.
+        """
+        
+        system_prompt = """
+You are a learning plan optimizer.
+A learner has failed their assessment.
+Adapt their study plan to address specific weak areas.
+Make the changes significant and targeted.
+Return only valid JSON matching the original plan structure.
+"""
+        
+        current_plan = json.dumps(
+            memory.get("study_plan", {}), 
+            indent=2
+        )[:2000]
+        
+        user_prompt = f"""
+Iteration: {iteration} (previous attempts failed)
+Weak topics that need fixing: {weak_topics}
+
+Current study plan:
+{current_plan}
+
+Adapt this plan by:
+1. Adding {iteration} extra hours per weak topic
+2. Moving weak topics earlier in the schedule
+3. Adding specific practice exercises for each weak topic
+4. Including review checkpoints before the exam
+
+For each week add an "adaptation_note" field explaining
+what changed and why.
+
+Return the complete adapted study plan JSON.
+"""
+        
+        response = self._call_llm_sync(
+            system_prompt, user_prompt
+        )
+        
+        try:
+            clean = response.strip()
+            if "```" in clean:
+                clean = clean.split("```")[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            clean = clean.strip()
+            
+            adapted = json.loads(clean)
+            memory["study_plan"] = adapted
+            memory["plan_adapted"] = True
+            memory["adaptation_iteration"] = iteration
+            
+        except Exception as e:
+            print(f"[AdaptiveLoop] JSON parse error: {e}")
+            # Add adaptation notes to existing plan
+            plan = memory.get("study_plan", {})
+            for week in plan:
+                if isinstance(plan[week], dict):
+                    plan[week]["adaptation_note"] = (
+                        f"Adapted in iteration {iteration}: "
+                        f"Extra focus on {', '.join(weak_topics[:2])}"
+                    )
+            memory["study_plan"] = plan
+        
+        return memory

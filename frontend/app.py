@@ -132,6 +132,486 @@ def get_week_data(week_data: dict) -> dict:
 
 
 # ============================================================================
+# INTERACTIVE MOCK EXAM (ISSUE 4)
+# ============================================================================
+import time
+
+def render_interactive_exam(state: dict):
+    """
+    One question at a time interactive exam.
+    Timer per question, progress indicator, immediate feedback.
+    """
+    
+    questions = st.session_state.get("questions", [])
+    
+    if not questions:
+        st.warning("No questions available. Run assessment first.")
+        return
+    
+    total = len(questions)
+    
+    # Initialize exam state
+    if "exam_state" not in st.session_state:
+        st.session_state.exam_state = {
+            "current_q": 0,
+            "answers": {},
+            "time_per_q": {},
+            "start_time": time.time(),
+            "q_start_time": time.time(),
+            "submitted": False,
+            "show_feedback": False,
+            "last_answer": None
+        }
+    
+    exam = st.session_state.exam_state
+    current_idx = exam["current_q"]
+    
+    if exam["submitted"]:
+        render_exam_results(questions, exam, state)
+        return
+    
+    # EXAM HEADER with progress
+    progress_pct = current_idx / total
+    time_elapsed = int(time.time() - exam["start_time"])
+    mins = time_elapsed // 60
+    secs = time_elapsed % 60
+    
+    col1, col2, col3 = st.columns([3, 1, 1])
+    with col1:
+        st.progress(progress_pct)
+        st.caption(f"Question {current_idx + 1} of {total}")
+    with col2:
+        st.markdown(
+            f"""
+            <div style='text-align: center;
+                 background: rgba(255,255,255,0.05);
+                 border-radius: 8px; padding: 8px;'>
+              <div style='font-size: 20px; 
+                   font-weight: 700;'>
+                {mins:02d}:{secs:02d}
+              </div>
+              <div style='font-size: 11px; 
+                   color: #8b8b9e;'>
+                TIME
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with col3:
+        answered = len(exam["answers"])
+        st.markdown(
+            f"""
+            <div style='text-align: center;
+                 background: rgba(255,255,255,0.05);
+                 border-radius: 8px; padding: 8px;'>
+              <div style='font-size: 20px; 
+                   font-weight: 700;'>
+                {answered}/{total}
+              </div>
+              <div style='font-size: 11px;
+                   color: #8b8b9e;'>
+                ANSWERED
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    st.markdown("---")
+    
+    # Check if all answered
+    if current_idx >= total:
+        st.success(f"✅ All {total} questions answered!")
+        if st.button(
+            "📤 Submit Exam & See Results",
+            type="primary",
+            use_container_width=True
+        ):
+            exam["submitted"] = True
+            st.rerun()
+        return
+    
+    q = questions[current_idx]
+    topic = q.get("topic", "")
+    question_text = q.get("question", "")
+    options = q.get("options", {})
+    source = q.get("source", "")
+    
+    # Show feedback from previous question
+    if exam.get("show_feedback") and current_idx > 0:
+        prev_q = questions[current_idx - 1]
+        prev_answer = exam["last_answer"]
+        correct = prev_q.get("correct_answer", "")
+        is_correct = prev_answer == correct
+        
+        if is_correct:
+            st.success(
+                f"✅ Correct! {prev_q.get('explanation', '')}"
+            )
+        else:
+            st.error(
+                f"❌ Incorrect. "
+                f"Correct answer: **{correct}** — "
+                f"{prev_q.get('explanation', '')}"
+            )
+        
+        exam["show_feedback"] = False
+        st.markdown("---")
+    
+    # Topic badge
+    st.markdown(
+        f"""
+        <div style='display: inline-block;
+             background: rgba(79,142,247,0.15);
+             border: 1px solid rgba(79,142,247,0.4);
+             border-radius: 20px;
+             padding: 4px 14px;
+             font-size: 12px;
+             color: #4f8ef7;
+             margin-bottom: 16px;'>
+          📚 {topic}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # Question text
+    st.markdown(
+        f"""
+        <div style='
+          font-size: 18px;
+          font-weight: 600;
+          color: #f0f0f0;
+          line-height: 1.6;
+          padding: 16px;
+          background: rgba(255,255,255,0.03);
+          border-radius: 12px;
+          margin-bottom: 20px;
+        '>
+          Q{current_idx + 1}. {question_text}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # Answer options as styled buttons
+    selected = exam["answers"].get(str(q["id"]), None)
+    
+    for opt_key, opt_text in options.items():
+        is_selected = selected == opt_key
+        
+        if st.button(
+            f"{opt_key}  {opt_text}",
+            key=f"opt_{current_idx}_{opt_key}",
+            use_container_width=True
+        ):
+            # Record answer and advance
+            q_time = time.time() - exam["q_start_time"]
+            exam["answers"][str(q["id"])] = opt_key
+            exam["time_per_q"][str(q["id"])] = q_time
+            exam["last_answer"] = opt_key
+            exam["show_feedback"] = True
+            exam["q_start_time"] = time.time()
+            exam["current_q"] = current_idx + 1
+            st.rerun()
+    
+    # Source citation
+    if source:
+        st.markdown(
+            f"""
+            <div style='color: #555566; font-size: 12px;
+                 margin-top: 16px;'>
+              📖 Source: {source}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    # Navigation
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col1:
+        if current_idx > 0:
+            if st.button("← Previous", use_container_width=True):
+                exam["current_q"] = current_idx - 1
+                exam["show_feedback"] = False
+                st.rerun()
+    
+    with col2:
+        # Question navigator dots
+        nav_html = ""
+        for i in range(total):
+            q_id = str(questions[i]["id"])
+            is_ans = q_id in exam["answers"]
+            is_curr = i == current_idx
+            color = (
+                "#4f8ef7" if is_curr
+                else "#00c896" if is_ans
+                else "#333"
+            )
+            nav_html += (
+                f"<span style='display:inline-block; "
+                f"width:24px; height:24px; "
+                f"background:{color}; border-radius:4px; "
+                f"margin:2px; text-align:center; "
+                f"font-size:11px; line-height:24px;'>{i+1}</span>"
+            )
+        st.markdown(nav_html, unsafe_allow_html=True)
+    
+    with col3:
+        if current_idx < total - 1:
+            if st.button("Next →", type="primary", use_container_width=True):
+                exam["current_q"] = current_idx + 1
+                exam["show_feedback"] = False
+                st.rerun()
+        else:
+            if st.button("Finish ✓", type="primary", use_container_width=True):
+                exam["submitted"] = True
+                st.rerun()
+
+
+def render_exam_results(questions: list, exam: dict, state: dict):
+    """Full exam results with score, breakdown, and question review."""
+    
+    # Submit to backend if not already done
+    if "results_loaded" not in st.session_state:
+        with st.spinner("Calculating results..."):
+            result = post_api("submit", {
+                "learner_id": state.get("learner_id", "L-1001"),
+                "answers": exam["answers"]
+            })
+        st.session_state.exam_results = result
+        st.session_state.results_loaded = True
+    
+    result = st.session_state.get("exam_results", {})
+    score = result.get("score", 0)
+    outcome = result.get("outcome", "FAIL")
+    breakdown = result.get("topic_breakdown", {})
+    
+    # Results header
+    color = "#00c896" if outcome == "PASS" else "#ff4757"
+    icon = "🎉" if outcome == "PASS" else "❌"
+    
+    st.markdown(
+        f"""
+        <div style='
+          background: {color}11;
+          border: 2px solid {color};
+          border-radius: 20px;
+          padding: 32px;
+          text-align: center;
+          margin-bottom: 24px;
+        '>
+          <div style='font-size: 48px;'>{icon}</div>
+          <div style='font-size: 48px; font-weight: 900;
+               color: {color};'>{outcome}</div>
+          <div style='font-size: 64px; font-weight: 900;
+               color: white; margin: 8px 0;'>
+            {score:.1f}%
+          </div>
+          <div style='font-size: 14px; color: #8b8b9e;'>
+            {len(exam["answers"])} questions · 
+            Passing score: 70% · 
+            Time: {int((time.time()-exam["start_time"])//60)}m
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # Import verdict explainer
+    try:
+        from frontend.components.verdict_explainer import render_verdict_explainer
+        render_verdict_explainer(get_api_state())
+    except:
+        pass
+    
+    # Topic breakdown chart
+    if breakdown and isinstance(breakdown, dict):
+        topics = list(breakdown.keys())
+        scores = [breakdown[t].get("score", 0) if isinstance(breakdown[t], dict) else 0 for t in topics]
+        colors = [
+            "#00c896" if s >= 70 
+            else "#ffa502" if s >= 50 
+            else "#ff4757" 
+            for s in scores
+        ]
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            y=topics,
+            x=scores,
+            orientation="h",
+            marker_color=colors,
+            text=[f"{s:.0f}%" for s in scores],
+            textposition="auto"
+        ))
+        fig.add_vline(
+            x=70,
+            line_dash="dash",
+            line_color="#ffa502",
+            annotation_text="Pass threshold"
+        )
+        fig.update_layout(
+            title="Performance by Topic",
+            xaxis_title="Score %",
+            xaxis_range=[0, 100],
+            height=max(200, len(topics) * 45),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#f0f0f0"),
+            margin=dict(l=0, r=0, t=40, b=0)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Question by question review
+    st.markdown("### 📋 Question Review")
+    st.caption("See exactly what went wrong and why")
+    
+    for q in questions:
+        qid = str(q["id"])
+        user_answer = exam["answers"].get(qid, "?")
+        correct = q.get("correct_answer", "")
+        is_correct = user_answer == correct
+        
+        with st.expander(
+            f"{'✅' if is_correct else '❌'} "
+            f"Q{q['id']}: {q['question'][:80]}...",
+            expanded=not is_correct
+        ):
+            st.write(q["question"])
+            
+            # Show all options with highlights
+            options = q.get("options", {})
+            for opt_k, opt_v in options.items():
+                is_user = opt_k == user_answer
+                is_correct_opt = opt_k == correct
+                
+                if is_correct_opt:
+                    st.success(f"✅ **{opt_k}.** {opt_v}")
+                elif is_user and not is_correct_opt:
+                    st.error(f"❌ **{opt_k}.** {opt_v} (Your answer)")
+                else:
+                    st.write(f"⚪ **{opt_k}.** {opt_v}")
+            
+            # Explanation
+            st.info(f"💡 {q.get('explanation', '')}")
+    
+    # Adaptive path if failed
+    if outcome == "FAIL":
+        st.markdown("---")
+        st.markdown("### 🔄 Adapt Your Learning Path")
+        
+        if st.button(
+            "🔄 Regenerate Learning Path for Weak Topics",
+            type="primary",
+            use_container_width=True
+        ):
+            with st.spinner("Adapting your learning path..."):
+                result = post_api("adaptive", {
+                    "learner_id": state.get("learner_id", "L-1001"),
+                    "max_iterations": 1
+                })
+            
+            if result:
+                st.success("✅ Learning path updated!")
+                st.rerun()
+        
+        # Show learning resources for weak topics
+        st.markdown("---")
+        st.markdown("### 📚 Learning Resources for Weak Topics")
+        
+        weak_topics = state.get("weak_topics", [])
+        if weak_topics:
+            from backend.plugins.resource_finder import find_resources
+            
+            cert = state.get("certification", "")
+            for topic in weak_topics[:3]:  # Top 3 weak topics
+                with st.expander(f"📖 {topic} — Study Materials"):
+                    try:
+                        resources = find_resources(cert, topic)
+                        
+                        # Official MS Learn
+                        official = resources.get("official", [])
+                        if official:
+                            st.markdown("**📘 Microsoft Learn (Official)**")
+                            for r in official:
+                                st.markdown(
+                                    f"→ [{r.get('title', 'Learn more')}]"
+                                    f"({r.get('url', '#')}) "
+                                    f"*{r.get('duration', '')}*"
+                                )
+                        
+                        # MVP content
+                        mvp = resources.get("mvp", [])
+                        if mvp:
+                            st.markdown("**⭐ Microsoft MVP Content**")
+                            for r in mvp:
+                                st.markdown(
+                                    f"""
+                                    <div style='
+                                      background: rgba(255,165,0,0.08);
+                                      border-left: 3px solid #ffa502;
+                                      border-radius: 8px;
+                                      padding: 10px 14px;
+                                      margin: 6px 0;
+                                    '>
+                                      <a href='{r.get("url", "#")}' target='_blank'
+                                         style='color: #ffa502; font-weight: 600;
+                                                text-decoration: none;'>
+                                        ⭐ {r.get("title", "Learn more")}
+                                      </a>
+                                      <div style='color: #8b8b9e; font-size: 12px;
+                                           margin-top: 4px;'>
+                                        {r.get("source", "")} · {r.get("type", "")}
+                                      </div>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True
+                                )
+                        
+                        # Videos
+                        videos = resources.get("videos", [])
+                        if videos:
+                            st.markdown("**🎬 Video Tutorials**")
+                            for r in videos:
+                                st.markdown(
+                                    f"→ [{r.get('title', 'Watch')}]"
+                                    f"({r.get('url', '#')})"
+                                )
+                        
+                        # Practice
+                        practice = resources.get("practice", [])
+                        if practice:
+                            st.markdown("**💻 Hands-On Practice**")
+                            for r in practice:
+                                st.markdown(
+                                    f"→ [{r.get('title', 'Try')}]"
+                                    f"({r.get('url', '#')})"
+                                )
+                    
+                    except Exception as e:
+                        st.write(f"Resources for {topic}...")
+    
+    # Retake button
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        if outcome == "FAIL":
+            if st.button("🔁 Retake Exam", use_container_width=True):
+                for key in ["exam_state", "questions", "results_loaded", "exam_results"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+    with col2:
+        if st.button("📊 View Full Report", type="primary", use_container_width=True):
+            st.session_state.page = "⚖️ Council Debate"
+            st.rerun()
+
+
+# ============================================================================
 # MAIN PIPELINE VIEW (Primary)
 # ============================================================================
 def render_pipeline():
