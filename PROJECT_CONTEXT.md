@@ -7,14 +7,15 @@
 
 ## Last Updated
 - Date: 2026-06-12
-- Session: **DETERMINISTIC RESOURCE FINDER** — Rewrote ResourceFinder as zero-hallucination, deterministic resource bundle generator. No LLM calls. All URLs use only trusted domains (learn.microsoft.com, youtube.com, github.com, techcommunity.microsoft.com). Added MVP content sources (John Savill, Tech Community). Updated frontend MVP rendering with gold/amber styled resource cards.
-- Status: Backend pipeline complete. ResourceFinder now fully deterministic — zero hallucination risk.
+- Session: **PREMIUM SAAS UI REDESIGN** — Complete frontend overhaul: Linear/Vercel-inspired dark mode with glass morphism, gradient accents, animations. Hero section with gradient title. Animated agent activity feed. Council debate as live chat bubbles (left/right, staggered). SVG confidence ring for verdict reveal. Premium stat cards with decorative blobs. Pill-shaped skill tags with weak topic highlighting. Premium exam question cards. Circular sidebar progress ring. Global CSS design system with color tokens.
+- Status: Backend pipeline complete. Frontend now premium SaaS quality — ResourceFinder deterministic, zero-hallucination.
 - Updated by: Arun
 
 ---
 
 ## Changelog
-- 2026-06-12 (Latest): **DETERMINISTIC RESOURCE FINDER** — Rewrote backend/plugins/resource_finder.py as fully deterministic, zero-hallucination resource bundle generator. ResourceFinder now synchronous. No LLM calls. No AzureOpenAI imports remain. All URLs use only trusted domains: learn.microsoft.com, youtube.com, github.com, techcommunity.microsoft.com. MVP sources include John Savill YouTube search and Tech Community discussions. Added caching for instant repeat lookups. MS Learn Catalog API with guaranteed fallback to search URL. Updated frontend MVP rendering with gold/amber (#ffa502) styled resource cards matching new data format.
+- 2026-06-12 (Latest): **PREMIUM SAAS UI REDESIGN** — Complete frontend app.py overhaul implementing 10 premium design tasks: (1) Hero landing section with gradient title, radial gradient background, "Powered by Azure AI Foundry" badge. (2) Glass morphism input card with backdrop-filter blur, hover border glow. (3) Animated agent activity feed with typing dots, pulse animation. (4) Council debate as alternating left/right chat bubbles with staggered appearance. (5) Verdict reveal with animated SVG confidence ring, gradient-ambient background. (6) Modern render_stat_card() with icon, decorative blob, trend indicator. (7) Skill tags as pill-shaped chips with hover lift, weak topics in red. (8) Premium exam question cards with gradient border, topic badge, letter answer badges. (9) Skeleton loading shimmer utility. (10) Sidebar circular SVG progress ring. Global CSS design system with color tokens (DS dict). Button hover lift on all elements. Streamlit overrides for inputs, sliders, tabs, progress bars, metrics, expanders.
+- 2026-06-12 (Earlier): **DETERMINISTIC RESOURCE FINDER** — Rewrote backend/plugins/resource_finder.py as fully deterministic, zero-hallucination resource bundle generator. ResourceFinder now synchronous. No LLM calls. No AzureOpenAI imports remain. All URLs use only trusted domains: learn.microsoft.com, youtube.com, github.com, techcommunity.microsoft.com. MVP sources include John Savill YouTube search and Tech Community discussions. Added caching for instant repeat lookups. MS Learn Catalog API with guaranteed fallback to search URL. Updated frontend MVP rendering with gold/amber (#ffa502) styled resource cards matching new data format.
 - 2026-06-12 (Earlier): **AUTOMATED PIPELINE ORCHESTRATION** — Implemented run_full_pipeline() in Orchestrator with 6-phase sequential execution (Learning → Council → Assessment → Coaching → Reflection). Added _check_council_discrepancies() and _adapt_learning_plan() for automatic study plan adaptation when council finds issues or assessment fails. Added POST /pipeline endpoint for single-button orchestration and GET /pipeline/status for progress tracking. Completely rewrote frontend: primary view is single automated pipeline with form input + "Run Full Analysis" button triggering all phases in sequence with live progress bar and phase-by-phase result display. Consolidated report shows verdict, score, adaptations made, and final study plan. Multi-page deep-dive navigation remains in sidebar (Council Debate, Manager Insights, Agent Reputation, Reasoning Trace) for read-only inspection. No manual page navigation needed for core flow.
 - 2026-06-12 (Earlier): **VALIDATION & CONNECTIVITY** — Fixed orchestrator singleton pattern with startup logging. Added GET /state endpoint for memory inspection. Created frontend/state.py as centralized API client with error handling and phase guard functions. Completely rewrote all 7 Streamlit pages with improved UX: phase guards prevent skipping steps, st.status() provides step-by-step feedback for long LLM calls, sidebar shows session status and system health, status badges show completion. Response times now visible with "Building learning plan..." multi-step status boxes. All endpoints handle timeouts gracefully (120s for LLM calls). Added /health system status expander in sidebar. End-to-end flow validated: learner dashboard → council → assessment → coaching → manager insights → reputation → trace.
 - 2026-06-10 (Earlier): **FEATURE COMPLETE** — Built self-learning layer with Reflection Agent and Manager Insights. ReflectionAgent compares council predictions vs actual exam outcomes, updates agent reputations in SQLite, and generates analytical insights via LLM. ManagerInsightsAgent provides team-level analytics including certification readiness, at-risk learners, and topic weakness patterns. All 7 Streamlit pages now complete: Manager Insights (team dashboard), Agent Reputation (leaderboard with animated bars), and Reasoning Trace (execution log). Added POST /reflection, GET /manager, and GET /reset-demo endpoints. System now self-improves: each assessment updates agent weights for future council verdicts.
@@ -65,6 +66,39 @@ Enterprise engineering teams manage certification programmes blindly. When engin
 A multi-agent system that builds personalised study plans, convenes an adversarial readiness council before the exam, diagnoses failure root causes after, and improves its own accuracy over time using agent reputation scores.
 
 ---
+
+## UI Design System — Color Tokens
+
+```python
+DS = {
+    "primary":    "#4f8ef7",   # Azure blue
+    "secondary":  "#a855f7",   # Purple accent
+    "success":    "#00c896",   # Green
+    "danger":     "#ff4757",   # Red
+    "warning":    "#ffa502",   # Amber/gold
+    "bg_card":    "rgba(255,255,255,0.04)",
+    "border":     "rgba(255,255,255,0.1)",
+    "border_hover": "rgba(79,142,247,0.4)",
+    "text_primary":   "#f0f0f0",
+    "text_secondary": "#8b8b9e",
+    "shadow":     "0 8px 32px rgba(0,0,0,0.3)",
+    "gradient_btn":   "linear-gradient(135deg, #4f8ef7, #a855f7)",
+    "gradient_bg":    "radial-gradient(circle at 50% 0%, rgba(79,142,247,0.15) 0%, transparent 60%)",
+}
+```
+
+**Component Styles:**
+- **Cards**: Glass morphism (`backdrop-filter: blur(20px)`), border `rgba(255,255,255,0.1)`, hover accent glow
+- **Primary buttons**: Gradient background `#4f8ef7 → #a855f7`, border-radius 12px, hover lift -2px Y, box-shadow 0 4px 20px
+- **Secondary buttons**: Transparent with white border, hover brighten
+- **Progress bars**: Gradient fill, 8px height, rounded corners
+- **Skill tags**: Pill shape 20px radius, hover lift + box-shadow, weak variant in red
+- **Exam letters**: 36px square badges, filled blue when selected, rounded 10px
+- **Verdict ring**: SVG `stroke-dasharray` with 1.5s transition, 140px diameter
+- **Stat cards**: Decorative blob top-right, uppercase labels, trend arrows with up/down
+- **Chat bubbles**: Alternating left/right alignment, colored translucent backgrounds, italic quotes
+- **Inputs**: Dark glass background, focus glow with 3px ring
+- **Skeleton shimmer**: Animated gradient sweep 1.5s infinite
 
 ## Tech Stack — FROZEN
 
@@ -410,7 +444,7 @@ CREATE TABLE IF NOT EXISTS reflections (
 
 | Page | Name | Key Feature |
 |---|---|---|
-| 2 | Council Debate | 5 agent cards + Critic verdict from last pipeline run. No new execution. |
+| 2 | Council Debate | Live chat-style debate (left/right bubbles) + dramatic verdict reveal with SVG confidence ring. Read-only. |
 | 3 | Manager Insights | Team-level readiness, at-risk learners, topic weakness patterns |
 | 4 | Agent Reputation | Plotly bar chart of agent accuracy scores from all pipeline runs |
 | 5 | Reasoning Trace | Full session log of all agent actions |
@@ -508,7 +542,7 @@ Every response from Learning Agent and Assessment Agent must cite:
 | base_agent.py | ✅ | Done |
 | main.py (FastAPI) | ✅ | Stubs done |
 | orchestrator.py | ✅ | Complete with run_full_pipeline(), _check_council_discrepancies(), _adapt_learning_plan(), _simulate_answers() |
-| frontend/app.py | ✅ | Complete with single-page automated pipeline UI + sidebar deep-dive pages |
+| frontend/app.py | ✅ | Premium SaaS UI: hero section, glass cards, chat bubbles, animated SVG rings, stat cards, skill tags, circular progress — complete |
 | POST /pipeline endpoint | ✅ | Complete with full 6-phase orchestration |
 | GET /pipeline/status endpoint | ✅ | Complete for progress tracking |
 | GET /state endpoint | ✅ | Memory inspection endpoint |
