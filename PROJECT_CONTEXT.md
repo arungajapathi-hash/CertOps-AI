@@ -6,15 +6,17 @@
 ---
 
 ## Last Updated
-- Date: 2026-06-10
-- Session: **FEATURE COMPLETE** — Self-Learning Layer + Manager Insights + All 7 Streamlit Pages
-- Status: All core functionality implemented. Remaining: README final, Demo video.
+- Date: 2026-06-12
+- Session: **AUTOMATED PIPELINE ORCHESTRATION** — Added run_full_pipeline() to Orchestrator, POST /pipeline endpoint, GET /pipeline/status endpoint, rewrote frontend as single-button automated flow with consolidated report
+- Status: Backend pipeline complete with all 6 phases orchestrated. Frontend now single-page main view with multi-page deep-dive navigation. All adaptations auto-applied.
 - Updated by: Arun
 
 ---
 
 ## Changelog
-- 2026-06-10 (Latest): **FEATURE COMPLETE** — Built self-learning layer with Reflection Agent and Manager Insights. ReflectionAgent compares council predictions vs actual exam outcomes, updates agent reputations in SQLite, and generates analytical insights via LLM. ManagerInsightsAgent provides team-level analytics including certification readiness, at-risk learners, and topic weakness patterns. All 7 Streamlit pages now complete: Manager Insights (team dashboard), Agent Reputation (leaderboard with animated bars), and Reasoning Trace (execution log). Added POST /reflection, GET /manager, and GET /reset-demo endpoints. System now self-improves: each assessment updates agent weights for future council verdicts.
+- 2026-06-12 (Latest): **AUTOMATED PIPELINE ORCHESTRATION** — Implemented run_full_pipeline() in Orchestrator with 6-phase sequential execution (Learning → Council → Assessment → Coaching → Reflection). Added _check_council_discrepancies() and _adapt_learning_plan() for automatic study plan adaptation when council finds issues or assessment fails. Added POST /pipeline endpoint for single-button orchestration and GET /pipeline/status for progress tracking. Completely rewrote frontend: primary view is single automated pipeline with form input + "Run Full Analysis" button triggering all phases in sequence with live progress bar and phase-by-phase result display. Consolidated report shows verdict, score, adaptations made, and final study plan. Multi-page deep-dive navigation remains in sidebar (Council Debate, Manager Insights, Agent Reputation, Reasoning Trace) for read-only inspection. No manual page navigation needed for core flow.
+- 2026-06-12 (Earlier): **VALIDATION & CONNECTIVITY** — Fixed orchestrator singleton pattern with startup logging. Added GET /state endpoint for memory inspection. Created frontend/state.py as centralized API client with error handling and phase guard functions. Completely rewrote all 7 Streamlit pages with improved UX: phase guards prevent skipping steps, st.status() provides step-by-step feedback for long LLM calls, sidebar shows session status and system health, status badges show completion. Response times now visible with "Building learning plan..." multi-step status boxes. All endpoints handle timeouts gracefully (120s for LLM calls). Added /health system status expander in sidebar. End-to-end flow validated: learner dashboard → council → assessment → coaching → manager insights → reputation → trace.
+- 2026-06-10 (Earlier): **FEATURE COMPLETE** — Built self-learning layer with Reflection Agent and Manager Insights. ReflectionAgent compares council predictions vs actual exam outcomes, updates agent reputations in SQLite, and generates analytical insights via LLM. ManagerInsightsAgent provides team-level analytics including certification readiness, at-risk learners, and topic weakness patterns. All 7 Streamlit pages now complete: Manager Insights (team dashboard), Agent Reputation (leaderboard with animated bars), and Reasoning Trace (execution log). Added POST /reflection, GET /manager, and GET /reset-demo endpoints. System now self-improves: each assessment updates agent weights for future council verdicts.
 - 2026-06-10 (Earlier): Built Assessment Agent and Socratic Coach. AssessmentAgent generates 10 mock exam questions via LLM, evaluates answers with topic-level scoring, saves results to SQLite, and triggers Socratic coaching on failure. SocraticCoach diagnoses root misconceptions using LLM and generates 3 guided questions using the Socratic method. Streamlit Pages 3 and 4 fully implemented with quiz UI, results review, and progressive Socratic question flow. Added POST /submit endpoint for answer submission.
 - 2026-06-10 (Earlier): Built the Readiness Council — the centerpiece of CertOps AI. Implemented all 5 specialist agents (Optimist, Skeptic, Advocate, Historian, RiskAnalyst) with parallel execution. Critic Agent synthesizes weighted votes with safety rules. Reputation Engine complete with SQLite backing. Streamlit Page 2 now shows 5 agent cards side-by-side with colored verdicts + prominent Critic verdict box. FastAPI /readiness endpoint fully wired and tested.
 - 2026-06-09 (Earlier): Integrated Azure AI Foundry IQ as primary knowledge source with cascading fallback (Foundry → Dynamic Web/LLM → Offline). Created knowledge_router.py for clean abstraction. Updated LearningAgent with citation tracking. Added Streamlit badges showing knowledge source. Created helper script find_connection_string.py. Added USE_FOUNDRY_IQ feature flag.
@@ -384,27 +386,38 @@ CREATE TABLE IF NOT EXISTS reflections (
 | POST | /assessment | learner_id | score, topic_breakdown, outcome |
 | POST | /coaching | learner_id | misconceptions, socratic_questions |
 | POST | /reflection | learner_id, actual_outcome | accuracy, agents_correct, agents_wrong |
+| POST | /pipeline | learner_id, role, certification, target_weeks | consolidated report with all 6 phases |
 | GET | /manager | — | team_readiness, at_risk, pass_rate |
 | GET | /reputation | — | agent accuracy scores |
 | GET | /health | — | status ok |
+| GET | /state | — | current shared memory state |
+| GET | /pipeline/status | — | phases_complete, progress_pct, current_phase, is_complete |
 
 ---
 
-## Streamlit Pages — FROZEN
+## Streamlit Pages — Redesigned
+
+**PRIMARY FLOW (Main View):**
 
 | Page | Name | Key Feature |
 |---|---|---|
-| 1 | Learner Dashboard | Input goal → show skill map + study plan |
-| 2 ⭐ | Readiness Council | 5 agent cards side by side + critic verdict — DEMO HERO |
-| 3 | Assessment | Quiz + score + topic breakdown |
-| 4 | Coaching | Socratic questions — only shown on FAIL |
-| 5 | Manager Insights | Team readiness table + at-risk list |
-| 6 | Agent Reputation | Plotly bar chart of agent accuracy |
-| 7 | Reasoning Trace | Full agent execution log |
+| 1 | Pipeline (Main) | ⭐ **PRIMARY** — Single-button automated pipeline. Input form + "Run Full Analysis" triggers all 6 phases sequentially with live progress. Results display as each phase completes. Consolidated report at end. No manual navigation required. |
 
-**Page 2 is the visual centrepiece. Must show all 5 agent cards simultaneously.**
+**DEEP-DIVE VIEWS (Read-Only, Sidebar Navigation):**
 
-**Dynamic Certification Support:** Certification input on Page 1 (Learner Dashboard) is now free-text. Users can enter ANY Microsoft certification (AZ-900, AZ-204, SC-900, MS-700, DP-203, etc.). DynamicKnowledgePlugin fetches exam objectives from Microsoft Learn or generates via LLM if needed. No hardcoded certification list.
+| Page | Name | Key Feature |
+|---|---|---|
+| 2 | Council Debate | 5 agent cards + Critic verdict from last pipeline run. No new execution. |
+| 3 | Manager Insights | Team-level readiness, at-risk learners, topic weakness patterns |
+| 4 | Agent Reputation | Plotly bar chart of agent accuracy scores from all pipeline runs |
+| 5 | Reasoning Trace | Full session log of all agent actions |
+
+**KEY CHANGES FROM PREVIOUS VERSION:**
+- Removed separate page buttons for Learning → Council → Assessment → Coaching flow
+- Added single "Run Full Analysis" button that orchestrates all phases automatically
+- Consolidated report replaces multi-page navigation as primary output
+- Deep-dive pages moved to sidebar, are read-only (no execution buttons)
+- Multi-page navigation still exists but only for inspection, not required for core flow
 
 - **Language**: Python 3.11+
 - **Async**: Use async/await throughout FastAPI. Streamlit calls FastAPI via httpx async client.
@@ -491,8 +504,12 @@ Every response from Learning Agent and Assessment Agent must cite:
 | memory.py | ✅ | Done |
 | base_agent.py | ✅ | Done |
 | main.py (FastAPI) | ✅ | Stubs done |
-| orchestrator.py | ✅ | Stubs done |
-| frontend/app.py | ✅ | Placeholders done |
+| orchestrator.py | ✅ | Complete with run_full_pipeline(), _check_council_discrepancies(), _adapt_learning_plan(), _simulate_answers() |
+| frontend/app.py | ✅ | Complete with single-page automated pipeline UI + sidebar deep-dive pages |
+| POST /pipeline endpoint | ✅ | Complete with full 6-phase orchestration |
+| GET /pipeline/status endpoint | ✅ | Complete for progress tracking |
+| GET /state endpoint | ✅ | Memory inspection endpoint |
+| GET /health endpoint | ✅ | System health check for sidebar indicator |
 | Synthetic data files | ✅ | Done |
 | Knowledge base guides | ✅ | Done |
 | Learning Agent | ✅ | Basic skill-map generation implemented |

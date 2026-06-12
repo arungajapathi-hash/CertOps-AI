@@ -5,7 +5,7 @@ from .socratic_coach import SocraticCoach
 from .reflection_agent import ReflectionAgent
 from .learning_agent import LearningAgent
 from .engagement_agent import EngagementAgent
-from .manager_insights import ManagerInsights
+from .manager_insights import ManagerInsightsAgent
 
 __all__ = [
 	"BaseAgent",
@@ -15,5 +15,5 @@ __all__ = [
 	"ReflectionAgent",
 	"LearningAgent",
 	"EngagementAgent",
-	"ManagerInsights",
+	"ManagerInsightsAgent",
 ]

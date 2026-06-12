@@ -60,6 +60,13 @@ class CoachingRequest(BaseModel):
     learner_id: str
 
 
+class PipelineRequest(BaseModel):
+    learner_id: str
+    role: str
+    certification: str
+    target_weeks: int = 6
+
+
 sessions: Dict[str, SharedMemory] = {}
 orchestrator = Orchestrator()
 
@@ -74,6 +81,8 @@ def get_session_memory(learner_id: str) -> SharedMemory:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     database.init_db()
+    print("[Startup] Orchestrator initialized — singleton instance ready")
+    print("[Startup] Shared memory active — persists across all requests")
     yield
 
 
@@ -191,3 +200,80 @@ async def reset_demo() -> Dict[str, str]:
 @app.get("/health")
 async def health() -> Dict[str, str]:
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/state")
+async def get_state() -> Dict[str, Any]:
+    """Returns current shared memory — used by all pages"""
+    mem = orchestrator.memory.to_dict()
+    return {
+        "has_data": bool(mem.get("learner_id")),
+        "learner_id": mem.get("learner_id", ""),
+        "certification": mem.get("certification", ""),
+        "role": mem.get("role", ""),
+        "target_weeks": mem.get("target_weeks", 0),
+        "skill_map": mem.get("skill_map", []),
+        "study_plan": mem.get("study_plan", {}),
+        "work_signals": mem.get("work_signals", {}),
+        "council_votes": mem.get("council_votes", {}),
+        "readiness_verdict": mem.get("readiness_verdict", ""),
+        "readiness_confidence": mem.get("readiness_confidence", 0),
+        "readiness_reasoning": mem.get("readiness_reasoning", ""),
+        "assessment_score": mem.get("assessment_score", 0),
+        "assessment_outcome": mem.get("assessment_outcome", ""),
+        "assessment_questions": mem.get("assessment_questions", []),
+        "misconceptions": mem.get("misconceptions", []),
+        "socratic_questions": mem.get("socratic_questions", []),
+        "remediation": mem.get("remediation", {}),
+        "reflection": mem.get("reflection", {}),
+        "session_log": mem.get("session_log", []),
+        "knowledge_source": mem.get("knowledge_source", ""),
+        "citations": mem.get("citations", []),
+        "adaptations": mem.get("adaptations", [])
+    }
+
+
+@app.post("/pipeline")
+async def run_pipeline(request: PipelineRequest) -> Dict[str, Any]:
+    """
+    Runs the complete automated pipeline.
+    Returns consolidated report.
+    """
+    try:
+        result = await orchestrator.run_full_pipeline(
+            learner_id=request.learner_id,
+            role=request.role,
+            certification=request.certification,
+            target_weeks=request.target_weeks
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/pipeline/status")
+async def pipeline_status() -> Dict[str, Any]:
+    """Returns current pipeline progress from memory"""
+    mem = orchestrator.memory.to_dict()
+    
+    phases_complete = {
+        "learning": bool(mem.get("skill_map")),
+        "council": bool(mem.get("readiness_verdict")),
+        "assessment": bool(mem.get("assessment_outcome")),
+        "coaching": bool(mem.get("misconceptions")),
+        "reflection": bool(mem.get("reflection"))
+    }
+    
+    completed = sum(phases_complete.values())
+    total = len(phases_complete)
+    
+    return {
+        "phases": phases_complete,
+        "progress_pct": (completed / total) * 100,
+        "current_phase": next(
+            (p for p, done in phases_complete.items() 
+             if not done), "complete"
+        ),
+        "adaptations_made": len(mem.get("adaptations", [])),
+        "is_complete": completed == total
+    }
