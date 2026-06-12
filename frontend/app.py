@@ -551,21 +551,17 @@ def render_exam_results(questions: list, exam: dict, state: dict):
                             for r in mvp:
                                 st.markdown(
                                     f"""
-                                    <div style='
-                                      background: rgba(255,165,0,0.08);
-                                      border-left: 3px solid #ffa502;
-                                      border-radius: 8px;
-                                      padding: 10px 14px;
-                                      margin: 6px 0;
-                                    '>
-                                      <a href='{r.get("url", "#")}' target='_blank'
-                                         style='color: #ffa502; font-weight: 600;
-                                                text-decoration: none;'>
-                                        ⭐ {r.get("title", "Learn more")}
-                                      </a>
-                                      <div style='color: #8b8b9e; font-size: 12px;
-                                           margin-top: 4px;'>
-                                        {r.get("source", "")} · {r.get("type", "")}
+                                    <div class='resource-card'>
+                                      <div style='font-size: 20px;'>⭐</div>
+                                      <div>
+                                        <a href='{r.get("url", "#")}' target='_blank'
+                                           style='color: #ffa502; font-weight: 600;
+                                                  text-decoration: none;'>
+                                          {r.get("title", "Learn more")}
+                                        </a>
+                                        <div style='color: #8b8b9e; font-size: 12px;'>
+                                          {r.get("source", "")} · {r.get("type", "")}
+                                        </div>
                                       </div>
                                     </div>
                                     """,

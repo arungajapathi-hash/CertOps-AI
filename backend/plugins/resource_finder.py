@@ -63,9 +63,47 @@ class ResourceFinder:
         # Construct resource bundle
         result = {
             "official": self._get_ms_learn(certification, topic, query),
-            "mvp": self._get_mvp_content(query),
-            "videos": self._get_video_resources(query),
-            "practice": self._get_practice_resources(topic_query)
+            "mvp": [
+                {
+                    "title": f"John Savill — video deep dive: {topic}",
+                    "url": self.MVP_SOURCES["john_savill"].format(query=query),
+                    "type": "Video (MVP)",
+                    "source": "John Savill (Microsoft MVP)",
+                    "free": True
+                },
+                {
+                    "title": f"Tech Community discussions: {topic}",
+                    "url": self.MVP_SOURCES["tech_community"].format(query=query),
+                    "type": "Blog/Q&A (MVP)",
+                    "source": "Microsoft Tech Community",
+                    "free": True
+                }
+            ],
+            "videos": [
+                {
+                    "title": f"Video walkthroughs: {topic}",
+                    "url": f"https://www.youtube.com/results?search_query={query}",
+                    "type": "Video",
+                    "source": "YouTube",
+                    "free": True
+                }
+            ],
+            "practice": [
+                {
+                    "title": f"Hands-on samples: {topic}",
+                    "url": f"https://github.com/search?q=org%3AAzure+{topic_query}&type=repositories",
+                    "type": "Code/Labs",
+                    "source": "GitHub (Azure org)",
+                    "free": True
+                },
+                {
+                    "title": f"Q&A on this topic: {topic}",
+                    "url": self.MVP_SOURCES["ms_learn_qa"].format(query=query),
+                    "type": "Community Q&A",
+                    "source": "MS Learn Q&A",
+                    "free": True
+                }
+            ]
         }
         
         # Cache result
@@ -127,97 +165,19 @@ class ResourceFinder:
             print(f"[ResourceFinder] MS Learn API error: {e}")
         
         # Fallback — guaranteed valid search URL (always works)
-        return [
-            {
-                "title": f"Search Microsoft Learn: {topic}",
-                "url": (
-                    f"https://learn.microsoft.com/en-us/search/"
-                    f"?terms={query}"
-                ),
-                "type": "MS Learn Search",
-                "duration": "",
-                "level": "",
-                "source": "Microsoft Learn (Official)",
-                "free": True,
-                "verified": True
-            }
-        ]
-    
-    def _get_mvp_content(self, query: str) -> List[Dict]:
-        """
-        MVP content from verified sources.
-        No LLM. Pure URL patterns.
-        """
-        return [
-            {
-                "title": "John Savill — video deep dive",
-                "url": self.MVP_SOURCES["john_savill"].format(
-                    query=query
-                ),
-                "type": "Video (Microsoft MVP)",
-                "source": "John Savill (Azure MVP)",
-                "free": True,
-                "verified": True
-            },
-            {
-                "title": "Microsoft Tech Community discussions",
-                "url": self.MVP_SOURCES["tech_community"].format(
-                    query=query
-                ),
-                "type": "Blog/Q&A (MVP)",
-                "source": "Microsoft Tech Community",
-                "free": True,
-                "verified": True
-            }
-        ]
-    
-    def _get_video_resources(self, query: str) -> List[Dict]:
-        """
-        Video learning resources (always valid YouTube search).
-        """
-        return [
-            {
-                "title": "Video tutorials on YouTube",
-                "url": (
-                    f"https://www.youtube.com/results"
-                    f"?search_query={query}"
-                ),
-                "type": "Video",
-                "source": "YouTube",
-                "free": True,
-                "verified": True
-            }
-        ]
-    
-    def _get_practice_resources(
-        self, topic_query: str
-    ) -> List[Dict]:
-        """
-        Hands-on practice resources (GitHub, Q&A).
-        """
-        return [
-            {
-                "title": "Hands-on code samples",
-                "url": (
-                    f"https://github.com/search"
-                    f"?q=org%3AAzure+{topic_query}&type=repositories"
-                ),
-                "type": "Code/Labs",
-                "source": "GitHub (Azure org)",
-                "free": True,
-                "verified": True
-            },
-            {
-                "title": "Community Q&A on this topic",
-                "url": self.MVP_SOURCES["ms_learn_qa"].format(
-                    query=topic_query
-                ),
-                "type": "Community Q&A",
-                "source": "MS Learn Q&A",
-                "free": True,
-                "verified": True
-            }
-        ]
+        return [{
+            "title": f"Search Microsoft Learn: {topic}",
+            "url": (
+                f"https://learn.microsoft.com/en-us/search/"
+                f"?terms={query}"
+            ),
+            "type": "MS Learn Search",
+            "duration": "",
+            "level": "",
+            "source": "Microsoft Learn (Official)",
+            "free": True,
+            "verified": True
+        }]
 
 
 # Module-level instance for easy use
@@ -276,4 +236,3 @@ def get_resources_by_certification(
         results[topic] = finder.find_resources(certification, topic)
     
     return results
-
