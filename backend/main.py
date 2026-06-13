@@ -1,3 +1,5 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
@@ -9,9 +11,18 @@ from pydantic import BaseModel, validator
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
+# Logging: quiet by default; set LOG_LEVEL=DEBUG in the environment to surface
+# the diagnostic traces during local debugging.
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("certops")
+
 from backend import database
 from backend.memory import SharedMemory
 from backend.orchestrator import Orchestrator
+from backend.pipeline_states import PIPELINE_STATES
 
 
 class LearnRequest(BaseModel):
@@ -72,6 +83,11 @@ class AdaptiveRequest(BaseModel):
     max_iterations: int = 3
 
 
+class ContinueRequest(BaseModel):
+    learner_id: str
+    answers: Dict[str, str]
+
+
 sessions: Dict[str, SharedMemory] = {}
 orchestrator = Orchestrator()
 
@@ -130,9 +146,11 @@ async def readiness(payload: ReadinessRequest) -> Dict[str, Any]:
 @app.post("/assessment")
 async def assessment(payload: AssessmentRequest) -> Dict[str, Any]:
     try:
+        logger.debug(f"/assessment called for {payload.learner_id}")
         result = await orchestrator.run_assessment_phase(
             learner_id=payload.learner_id
         )
+        logger.debug(f"Questions generated: {len(result.get('questions', []))}")
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -143,10 +161,12 @@ async def assessment(payload: AssessmentRequest) -> Dict[str, Any]:
 @app.post("/submit")
 async def submit(payload: SubmitRequest) -> Dict[str, Any]:
     try:
+        logger.debug(f"/submit called with {len(payload.answers)} answers")
         result = await orchestrator.submit_assessment(
             learner_id=payload.learner_id,
             answers=payload.answers
         )
+        logger.debug(f"Score: {result.get('score')}, Outcome: {result.get('outcome')}")
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -227,6 +247,8 @@ async def get_state() -> Dict[str, Any]:
         "assessment_score": mem.get("assessment_score", 0),
         "assessment_outcome": mem.get("assessment_outcome", ""),
         "assessment_questions": mem.get("assessment_questions", []),
+        "assessment_question_count": mem.get("assessment_question_count", 0),
+        "assessment_timer_minutes": mem.get("assessment_timer_minutes", 0),
         "misconceptions": mem.get("misconceptions", []),
         "socratic_questions": mem.get("socratic_questions", []),
         "remediation": mem.get("remediation", {}),
@@ -234,23 +256,91 @@ async def get_state() -> Dict[str, Any]:
         "session_log": mem.get("session_log", []),
         "knowledge_source": mem.get("knowledge_source", ""),
         "citations": mem.get("citations", []),
-        "adaptations": mem.get("adaptations", [])
+        "adaptations": mem.get("adaptations", []),
+        "learning_resources": mem.get("learning_resources", {}),
+        "pipeline_state": mem.get("pipeline_state", "")
     }
+
+
+@app.post("/session/save")
+async def save_session(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Save arbitrary session data into orchestrator memory under 'session_data'.
+    Expected payload: { 'learner_id': 'L-1001', 'session_key': 'assessment_state', 'data': {...} }
+    """
+    try:
+        learner_id = payload.get("learner_id")
+        key = payload.get("session_key")
+        data = payload.get("data")
+        if not key:
+            raise ValueError("session_key required")
+        mem = orchestrator.memory.to_dict()
+        sessions = mem.get("session_data", {})
+        learner_map = sessions.get(learner_id, {})
+        learner_map[key] = data
+        sessions[learner_id] = learner_map
+        orchestrator.memory.update({"session_data": sessions})
+        return {"status": "ok"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/session/load")
+async def load_session(learner_id: str, session_key: str) -> Dict[str, Any]:
+    """Load session data saved under learner_id/session_key"""
+    mem = orchestrator.memory.to_dict()
+    sessions = mem.get("session_data", {})
+    learner_map = sessions.get(learner_id, {})
+    return {"data": learner_map.get(session_key)}
 
 
 @app.post("/pipeline")
 async def run_pipeline(request: PipelineRequest) -> Dict[str, Any]:
     """
     Runs the complete automated pipeline.
-    Returns consolidated report.
+    interactive_assessment=True by default — pauses after Phase 2
+    for user to take the real quiz.
     """
     try:
+        # Concurrency guard: don't start a new pipeline if one is active for this learner
+        mem = orchestrator.memory.to_dict()
+        current_state = mem.get("pipeline_state", "idle")
+        if current_state not in ("idle", "complete") and mem.get("learner_id") == request.learner_id:
+            raise HTTPException(status_code=409, detail=f"Pipeline already running (state={current_state})")
+
         result = await orchestrator.run_full_pipeline(
             learner_id=request.learner_id,
             role=request.role,
             certification=request.certification,
-            target_weeks=request.target_weeks
+            target_weeks=request.target_weeks,
+            interactive_assessment=True
         )
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/pipeline/continue")
+async def continue_pipeline(request: ContinueRequest) -> Dict[str, Any]:
+    """
+    Called after user completes interactive quiz.
+    Evaluates answers, runs coaching + reflection.
+    Returns consolidated report.
+    """
+    logger.debug(f"/pipeline/continue called with {len(request.answers)} answers")
+    logger.debug(f"/pipeline/continue answers received: {request.answers}")
+    if not request.answers:
+        logger.warning("Empty answers dict received!")
+    try:
+        result = await orchestrator.continue_pipeline_after_assessment(
+            learner_id=request.learner_id,
+            answers=request.answers
+        )
+        logger.debug(f"/pipeline/continue complete: "
+              f"score={result['phases'].get('assessment',{}).get('score')}, "
+              f"outcome={result['phases'].get('assessment',{}).get('outcome')}")
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -275,12 +365,15 @@ async def pipeline_status() -> Dict[str, Any]:
     return {
         "phases": phases_complete,
         "progress_pct": (completed / total) * 100,
-        "current_phase": next(
+        "current_phase": mem.get("pipeline_state", next(
             (p for p, done in phases_complete.items() 
              if not done), "complete"
-        ),
+        )),
         "adaptations_made": len(mem.get("adaptations", [])),
-        "is_complete": completed == total
+        "is_complete": completed == total,
+        "pipeline_state": mem.get("pipeline_state", "idle"),
+        "pipeline_state_label": PIPELINE_STATES.get(mem.get("pipeline_state"), {}).get("label", ""),
+        "pipeline_next_action": PIPELINE_STATES.get(mem.get("pipeline_state"), {}).get("next_action", "")
     }
 
 

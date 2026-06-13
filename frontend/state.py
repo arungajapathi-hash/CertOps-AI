@@ -53,6 +53,29 @@ def get_api(endpoint: str) -> dict:
         return {}
 
 
+def save_session(payload: dict) -> dict:
+    """Store UI session data in backend memory"""
+    try:
+        response = httpx.post(f"{API_BASE}/session/save", json=payload, timeout=3)
+        if response.status_code == 200:
+            return response.json()
+        return {}
+    except Exception:
+        # Avoid raising Streamlit errors on simple session saves to prevent reruns
+        return {}
+
+
+def load_session(learner_id: str, session_key: str) -> dict:
+    try:
+        response = httpx.get(f"{API_BASE}/session/load", params={"learner_id": learner_id, "session_key": session_key}, timeout=10)
+        if response.status_code == 200:
+            return response.json().get("data")
+        return None
+    except Exception as e:
+        st.error(f"Cannot load session: {e}")
+        return None
+
+
 def has_completed_phase(phase: str) -> bool:
     """Check if a phase has been completed"""
     state = get_api_state()

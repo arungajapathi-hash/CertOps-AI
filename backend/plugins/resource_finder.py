@@ -139,12 +139,17 @@ class ResourceFinder:
                 for m in modules[:3]:
                     url = m.get("url", "")
                     if url:
+                        # API returns full URLs already; only prepend domain if relative path
+                        if url.startswith("http"):
+                            full_url = url
+                        else:
+                            full_url = f"https://learn.microsoft.com{url}"
                         results.append({
                             "title": m.get(
                                 "title", 
                                 f"Microsoft Learn: {topic}"
                             ),
-                            "url": f"https://learn.microsoft.com{url}",
+                            "url": full_url,
                             "type": "MS Learn Module",
                             "duration": (
                                 f"{m.get('duration_in_minutes', 0)} min"
