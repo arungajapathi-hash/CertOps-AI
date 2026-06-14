@@ -16,6 +16,32 @@
 
 <img width="1917" height="887" alt="CertOps-AI-Index" src="https://github.com/user-attachments/assets/7d7827af-c26a-46c5-ad0b-fdac8b12a70a" />
 
+Live Demo
+
+Demo URL
+
+🌐 https://certops-ai.onrender.com
+
+Overview
+
+CertOps AI is an AI-powered certification learning and preparation platform that helps users:
+
+- Generate personalized study plans
+- Access certification knowledge and learning resources
+- Track learning progress
+- Practice with certification-focused assessments
+- Interact with AI-powered learning assistants
+
+Deployment
+
+- Frontend: Streamlit
+- Backend: FastAPI
+- Hosting: Render
+- AI Services: Azure OpenAI
+
+Notes
+
+The application may take a few seconds to wake up if the Render instance has been idle.
 ---
 
 # 🚀 Overview
