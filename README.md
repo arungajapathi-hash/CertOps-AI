@@ -22,16 +22,6 @@ Demo URL
 
 🌐 https://certops-ai.onrender.com
 
-Overview
-
-CertOps AI is an AI-powered certification learning and preparation platform that helps users:
-
-- Generate personalized study plans
-- Access certification knowledge and learning resources
-- Track learning progress
-- Practice with certification-focused assessments
-- Interact with AI-powered learning assistants
-
 Deployment
 
 - Frontend: Streamlit
