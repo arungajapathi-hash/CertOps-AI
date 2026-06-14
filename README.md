@@ -14,6 +14,8 @@
 
 </p>
 
+<img width="1917" height="887" alt="CertOps-AI-Index" src="https://github.com/user-attachments/assets/7d7827af-c26a-46c5-ad0b-fdac8b12a70a" />
+
 ---
 
 # 🚀 Overview
