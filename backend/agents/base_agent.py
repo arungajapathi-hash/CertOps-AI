@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
@@ -58,7 +59,22 @@ class BaseAgent:
     def execute(self, memory: dict) -> dict:
         raise NotImplementedError("Each agent must implement execute()")
 
-    def _call_llm(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
+    async def _call_llm_async(self, system_prompt: str, user_prompt: str, temperature: float = 0.7,
+                               max_tokens: int = 1000) -> str:
+        """Async version of _call_llm.
+
+        Uses asyncio.to_thread to run the synchronous OpenAI call in a
+        default thread pool so it never blocks the asyncio event loop.
+        This lets other endpoints (e.g. /logs, /pipeline/status) be served
+        concurrently during long pipeline runs — the console drawer can
+        show real-time progress.
+        """
+        return await asyncio.to_thread(
+            self._call_llm, system_prompt, user_prompt, temperature, max_tokens
+        )
+
+    def _call_llm(self, system_prompt: str, user_prompt: str, temperature: float = 0.7,
+                  max_tokens: int = 1000) -> str:
         if self.client is None:
             if self.client_error:
                 return f"LLM error: {self.client_error}"
@@ -74,7 +90,7 @@ class BaseAgent:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=temperature,
-                max_tokens=1000,
+                max_tokens=max_tokens,
             )
             msg = response.choices[0].message
             content = msg.content if hasattr(msg, "content") else msg.get("content", "")

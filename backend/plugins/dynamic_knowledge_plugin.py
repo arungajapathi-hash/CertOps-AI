@@ -8,7 +8,7 @@ from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
-from openai import AzureOpenAI
+import openai
 
 
 class DynamicKnowledgePlugin:
@@ -20,14 +20,17 @@ class DynamicKnowledgePlugin:
             "User-Agent": "Mozilla/5.0 (compatible; CertOpsAI/1.0)"
         })
         
-        # Initialize LLM client
+        # Initialize LLM client — use the modern OpenAI v1 client (base_url),
+        # matching BaseAgent. The Azure OpenAI v1 endpoint is OpenAI-compatible
+        # and needs no api_version (the old AzureOpenAI client required one).
         self.client = None
         try:
-            self.client = AzureOpenAI(
-                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION")
-            )
+            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+            if endpoint and "/api/projects/" in endpoint:
+                endpoint = f"{endpoint.split('/api/projects/')[0]}/openai/v1/"
+            api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            if api_key:
+                self.client = openai.OpenAI(api_key=api_key, base_url=endpoint or None)
         except Exception as e:
             print(f"[DynamicKnowledge] LLM client init failed: {e}")
 

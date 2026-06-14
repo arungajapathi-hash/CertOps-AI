@@ -1,5 +1,6 @@
 """AssessmentAgent - Generates mock exam questions and evaluates answers."""
 import json
+import random
 from typing import Dict, List, Any
 
 from backend.agents.base_agent import BaseAgent
@@ -33,7 +34,8 @@ class AssessmentAgent(BaseAgent):
         memory["assessment_question_count"] = question_count
         memory["assessment_timer_minutes"] = timer_minutes
 
-        # Step 1: Get certification guide
+        # Build a fresh, Foundry-IQ-grounded question set on every exam — no
+        # disk cache, so a retake always gets newly generated questions.
         try:
             guide = self.knowledge.get_certification_guide(certification)
             content = guide.get("content", "") if isinstance(guide, dict) else str(guide)
@@ -41,164 +43,149 @@ class AssessmentAgent(BaseAgent):
             self._log(f"Error fetching guide: {e}")
             content = f"General {certification} exam content"
 
-        # Step 2: Generate questions via LLM
-        system_prompt = (
-            "You are a senior Microsoft certification item writer. "
-            "Generate realistic certification-style practice questions grounded in the provided exam content. "
-            "Use scenario-based stems that test applied judgement, trade-offs, constraints, and best next actions. "
-            "Avoid placeholder wording such as 'sample question', 'option A', or obvious answers. "
-            "Each question must have exactly four plausible options, one correct answer, a concise explanation, "
-            "and a source citation. Return only valid JSON with double-quoted keys and strings."
+        citations = guide.get("citations", []) if isinstance(guide, dict) else []
+        source = guide.get("source", "Foundry IQ") if isinstance(guide, dict) else "Foundry IQ"
+        generated = await self._build_bank(
+            certification, content, question_count, skill_map, exam_domains,
+            citations=citations, source=source,
         )
 
-        domain_instructions = ""
-        if exam_domains:
-            domain_lines = []
-            for domain in exam_domains:
-                name = domain.get("domain", "General")
-                weight = domain.get("weight_percent", 0)
-                count = max(1, round(question_count * weight / 100))
-                key_topics = domain.get("key_topics", [])
-                topic_line = f"- {name}: approx. {count} questions ({weight}% weight)"
-                if key_topics:
-                    topic_line += f" covering {', '.join(key_topics[:3])}"
-                domain_lines.append(topic_line)
-            domain_instructions = "Domain allocation:\n" + "\n".join(domain_lines) + "\n\n"
-
-        user_prompt = (
-            f"Generate {question_count} certification-style practice questions for {certification}.\n\n"
-            f"Certification content:\n{content[:2000]}\n\n"
-            f"{domain_instructions}"
-            f"Focus these weak topics heavily (60% of questions):\n{weak_topics}\n\n"
-            f"Also cover these skills (40% of questions):\n{skill_map[:5] if skill_map else ['General certification topics']}\n\n"
-            f"Question quality requirements:\n"
-            f"- Use realistic workplace scenarios and constraints.\n"
-            f"- Include command/configuration/architecture choices where relevant.\n"
-            f"- Make distractors plausible but clearly wrong for a specific reason.\n"
-            f"- Do not mention that these are sample questions.\n"
-            f"- Do not use generic option text.\n\n"
-            f"Return JSON:\n"
-            f"{{\n"
-            f"  \"questions\": [\n"
-            f"    {{\n"
-            f"      \"id\": 1,\n"
-            f"      \"topic\": \"domain or topic name\",\n"
-            f"      \"question\": \"scenario question text\",\n"
-            f"      \"options\": {{\n"
-            f"        \"A\": \"plausible option text\",\n"
-            f"        \"B\": \"plausible option text\",\n"
-            f"        \"C\": \"plausible option text\",\n"
-            f"        \"D\": \"plausible option text\"\n"
-            f"      }},\n"
-            f"      \"correct_answer\": \"A\",\n"
-            f"      \"explanation\": \"why this option is correct and why the closest distractor is not\",\n"
-            f"      \"source\": \"exam guide section citation\"\n"
-            f"    }}\n"
-            f"  ]\n"
-            f"}}"
-        )
-
-        response = self._call_llm(system_prompt, user_prompt, temperature=0.7)
-
-        # Step 3: Parse questions
-        try:
-            clean = response.strip()
-            if clean.startswith("```"):
-                clean = clean.split("```")[1]
-                if clean.startswith("json"):
-                    clean = clean[4:]
-            clean = clean.strip()
-
-            result = json.loads(clean)
-            questions = self._normalize_questions(
-                result.get("questions", []),
-                certification,
-                weak_topics,
-                skill_map,
-                question_count,
-                exam_domains,
-            )
-
-            if len(questions) < question_count:
-                questions = self._generate_fallback_questions(
-                    certification,
-                    weak_topics,
-                    skill_map,
-                    question_count,
-                    exam_domains,
-                    existing_questions=questions
+        if generated:
+            sampled = self._sample_from_bank(generated, question_count, weak_topics, exam_domains)
+            if len(sampled) < question_count:
+                sampled = self._generate_fallback_questions(
+                    certification, weak_topics, skill_map, question_count,
+                    exam_domains, existing_questions=sampled,
                 )
-
-            memory["assessment_questions"] = questions
-            self._append_log(memory, f"AssessmentAgent: Generated {len(questions)} questions for {certification}")
-
-        except json.JSONDecodeError as e:
-            self._log(f"JSON parse error: {e}")
-            questions = self._generate_fallback_questions(
-                certification,
-                weak_topics,
-                skill_map,
-                question_count,
-                exam_domains,
+            memory["assessment_questions"] = sampled[:question_count]
+            memory["assessment_source"] = "foundry_generated"
+            self._append_log(
+                memory,
+                f"AssessmentAgent: Built {len(generated)} Foundry-grounded questions for {certification}",
             )
-            memory["assessment_questions"] = questions
-            self._append_log(memory, f"AssessmentAgent: Using fallback questions ({len(questions)})")
+        else:
+            # Generation failed entirely — fall back to templates so the exam
+            # still runs (rare; only when the LLM is unreachable).
+            memory["assessment_questions"] = self._generate_fallback_questions(
+                certification, weak_topics, skill_map, question_count, exam_domains,
+            )
+            memory["assessment_source"] = "template_fallback"
+            self._append_log(memory, f"AssessmentAgent: Using template fallback for {certification}")
 
         return memory
 
-    def _normalize_questions(
+    async def _build_bank(
         self,
-        questions: List[Dict[str, Any]],
         certification: str,
-        weak_topics: List[str],
-        skill_map: List[str],
+        content: str,
         question_count: int,
+        skill_map: List[str],
         exam_domains: List[Dict[str, Any]],
+        citations: List[str] = None,
+        source: str = "Foundry IQ",
     ) -> List[Dict[str, Any]]:
-        """Keep generated items exam-like and replace weak/placeholder items."""
-        valid_questions = []
-        for i, question in enumerate(questions[:question_count], start=1):
-            if not isinstance(question, dict) or self._looks_placeholder(question):
-                continue
+        """Generate a fresh question set in small batches (not persisted).
 
-            options = question.get("options", {})
-            if not isinstance(options, dict) or set(options.keys()) != {"A", "B", "C", "D"}:
-                continue
+        Each domain's batch is grounded on Foundry IQ retrieval (per-topic
+        search), so questions cite the same knowledge base used elsewhere in
+        the app. Batching keeps each LLM response small enough that it never
+        truncates (the root cause of the old repeating-question bug).
+        """
+        citations = citations or []
+        target = int(question_count * 1.3) + 4
+        domain_names = [d.get("domain") for d in exam_domains if d.get("domain")]
+        if not domain_names:
+            domain_names = (skill_map[:5] if skill_map else [f"{certification} core skills"])
 
-            correct = str(question.get("correct_answer", "")).upper()
-            if correct not in options:
-                continue
-
-            question["id"] = i
-            question["correct_answer"] = correct
-            question["topic"] = question.get("topic") or self._topic_for_index(
-                i - 1,
-                certification,
-                weak_topics,
-                skill_map,
-                exam_domains,
+        bank: List[Dict[str, Any]] = []
+        seen = set()
+        batch_size = 8
+        di = 0
+        stalls = 0
+        while len(bank) < target and stalls < 3:
+            domain = domain_names[di % len(domain_names)]
+            di += 1
+            before = len(bank)
+            # Pull Foundry IQ context specific to this domain when available,
+            # otherwise fall back to the overall guide content.
+            domain_context = content
+            search = getattr(self.knowledge, "search_topics", None)
+            if callable(search):
+                try:
+                    retrieved = search(certification, domain)
+                    if retrieved and len(str(retrieved)) > 80:
+                        domain_context = str(retrieved)
+                except Exception:
+                    domain_context = content
+            batch = await self._gen_question_batch(
+                certification, domain, batch_size, domain_context,
+                [q["question"] for q in bank],
+                citations=citations, source=source,
             )
-            question["source"] = question.get("source") or f"{certification} exam skills outline"
-            valid_questions.append(question)
+            for q in batch:
+                stem = q.get("question", "").strip().lower()
+                if stem and stem not in seen:
+                    seen.add(stem)
+                    bank.append(q)
+                    if len(bank) >= target:
+                        break
+            stalls = stalls + 1 if len(bank) == before else 0
 
-        if len(valid_questions) < question_count:
-            fallback = self._generate_fallback_questions(
-                certification,
-                weak_topics,
-                skill_map,
-                question_count,
-                exam_domains,
-                existing_questions=valid_questions,
-            )
-            used = {q.get("question") for q in valid_questions}
-            for question in fallback:
-                if question.get("question") not in used:
-                    question["id"] = len(valid_questions) + 1
-                    valid_questions.append(question)
-                if len(valid_questions) == question_count:
-                    break
+        if bank:
+            for i, q in enumerate(bank, start=1):
+                q["id"] = i
+        return bank
 
-        return valid_questions
+    async def _gen_question_batch(
+        self, certification: str, domain: str, n: int, content: str, avoid: List[str],
+        citations: List[str] = None, source: str = "Foundry IQ",
+    ) -> List[Dict[str, Any]]:
+        """Generate a small batch of validated questions for one domain,
+        grounded on the supplied Foundry IQ context."""
+        citations = citations or []
+        default_source = citations[0] if citations else source
+        system = (
+            "You are a senior certification item writer. Produce realistic, "
+            "scenario-based multiple-choice questions grounded ONLY in the "
+            "provided exam content. Return ONLY valid JSON."
+        )
+        avoid_txt = ""
+        if avoid:
+            avoid_txt = "\nDo NOT repeat or paraphrase these existing stems:\n" + "; ".join(avoid[-12:]) + "\n"
+        user = (
+            f"Write {n} distinct {certification} exam questions for the domain '{domain}'.\n"
+            f"Exam content:\n{content[:1500]}\n{avoid_txt}\n"
+            "Each item needs a scenario stem, exactly four plausible options (A-D), "
+            "one correct answer, a one-sentence explanation, and a short source label.\n"
+            'Return JSON: {"questions":[{"topic":"' + domain + '","question":"...",'
+            '"options":{"A":"...","B":"...","C":"...","D":"..."},'
+            '"correct_answer":"A","explanation":"...","source":"..."}]}'
+        )
+        raw = await self._call_llm_async(system, user, temperature=0.8, max_tokens=2200)
+        clean = raw.strip()
+        if clean.startswith("```"):
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        try:
+            items = json.loads(clean.strip()).get("questions", [])
+        except Exception:
+            return []
+        out = []
+        for q in items:
+            if not isinstance(q, dict) or self._looks_placeholder(q):
+                continue
+            opts = q.get("options", {})
+            if not isinstance(opts, dict) or set(opts.keys()) != {"A", "B", "C", "D"}:
+                continue
+            if str(q.get("correct_answer", "")).upper() not in opts:
+                continue
+            q["correct_answer"] = str(q["correct_answer"]).upper()
+            q["topic"] = q.get("topic") or domain
+            q["source"] = q.get("source") or default_source
+            q["grounded_in"] = source
+            out.append(q)
+        return out
 
     def _looks_placeholder(self, question: Dict[str, Any]) -> bool:
         text = " ".join([
@@ -231,6 +218,53 @@ class AssessmentAgent(BaseAgent):
             return domain_names[index % len(domain_names)]
         topics = [t for t in (weak_topics + skill_map) if t]
         return topics[index % len(topics)] if topics else f"{certification} readiness"
+
+    def _sample_from_bank(
+        self,
+        bank: List[Dict[str, Any]],
+        count: int,
+        weak_topics: List[str],
+        exam_domains: List[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Sample `count` unique questions, biased toward weak topics (~60%).
+
+        Returns freshly numbered, validated question dicts. Never repeats an
+        item within a single exam.
+        """
+        valid = []
+        for q in bank:
+            options = q.get("options", {})
+            if not isinstance(options, dict) or set(options.keys()) != {"A", "B", "C", "D"}:
+                continue
+            if str(q.get("correct_answer", "")).upper() not in options:
+                continue
+            valid.append(q)
+        if not valid:
+            return []
+
+        weak_lower = {str(t).lower() for t in (weak_topics or []) if t}
+        weak_q, other_q = [], []
+        for q in valid:
+            topic = str(q.get("topic", "")).lower()
+            (weak_q if weak_lower and any(w in topic for w in weak_lower) else other_q).append(q)
+
+        random.shuffle(weak_q)
+        random.shuffle(other_q)
+
+        target_weak = min(len(weak_q), int(round(count * 0.6)))
+        chosen = weak_q[:target_weak] + other_q + weak_q[target_weak:]
+        chosen = chosen[:count]
+        random.shuffle(chosen)
+
+        result = []
+        for i, q in enumerate(chosen, start=1):
+            nq = dict(q)
+            nq["id"] = i
+            nq["correct_answer"] = str(q.get("correct_answer", "A")).upper()
+            nq["topic"] = q.get("topic") or "General"
+            nq["source"] = q.get("source") or f"Curated {self.name} bank"
+            result.append(nq)
+        return result
 
     async def evaluate(self, memory: Dict, answers: Dict) -> Dict:
         """Evaluate submitted answers and calculate scores."""
