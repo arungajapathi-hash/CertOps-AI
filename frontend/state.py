@@ -19,13 +19,17 @@ def get_api_state() -> dict:
         return {}
 
 
-def post_api(endpoint: str, payload: dict) -> dict:
-    """POST to FastAPI with error handling"""
+def post_api(endpoint: str, payload: dict, timeout: int = 120) -> dict:
+    """POST to FastAPI with error handling.
+
+    timeout defaults to 120s; pass a larger value for lazy question generation,
+    which builds the full exam grounded in Foundry IQ.
+    """
     try:
         response = httpx.post(
             f"{API_BASE}/{endpoint}",
             json=payload,
-            timeout=120  # LLM calls take time
+            timeout=timeout
         )
         if response.status_code == 200:
             return response.json()

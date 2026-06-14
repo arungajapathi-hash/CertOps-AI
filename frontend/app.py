@@ -1043,9 +1043,11 @@ def render_analyzing_view():
             return
         progress.progress(100)
         st.session_state.pipeline_result = result
-        questions = result.get("phases", {}).get("assessment", {}).get("questions", []) or []
-        st.session_state.questions = questions
-    if st.session_state.get("questions"):
+        # Questions are NOT generated here anymore — they're created lazily when
+        # the learner starts the mock exam, keeping this analysis fast.
+        st.session_state.questions = result.get("phases", {}).get("assessment", {}).get("questions", []) or []
+    # Pipeline reached the council/plan stage — move on to plan review.
+    if st.session_state.get("pipeline_result"):
         learner_id = st.session_state.get("form_learner_id", "")
         st.session_state.view = "plan_review"
         save_ui_session()
@@ -1053,7 +1055,7 @@ def render_analyzing_view():
         st.rerun()
     else:
         render_error_state(
-            "No exam questions generated. Retry?",
+            "Analysis failed. Retry?",
             lambda: st.session_state.pop("pipeline_result", None)
         )
 
@@ -1094,7 +1096,22 @@ def render_plan_review_view():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"**Mock exam profile:** {st.session_state.get('form_certification', 'AZ-204')} — {profile['count']} questions, {profile['duration']} minutes")
-        if st.button("✅ I'm Ready — Start Mock Exam", type="primary", use_container_width=True):
+        # Questions are generated lazily here (not during the analysis), so the
+        # earlier "Analyzing..." step stays fast.
+        questions_ready = bool(st.session_state.get("questions"))
+        btn_label = "✅ I'm Ready — Start Mock Exam" if questions_ready \
+                    else "📝 Generate & Start Mock Exam"
+        if st.button(btn_label, type="primary", use_container_width=True):
+            if not questions_ready:
+                with st.spinner("Generating your exam questions from Foundry IQ — this takes a moment..."):
+                    result = post_api("assessment", {
+                        "learner_id": st.session_state.get("form_learner_id", "L-1001")
+                    }, timeout=240)
+                new_questions = (result or {}).get("questions", []) or []
+                if not new_questions:
+                    st.error("Couldn't generate exam questions. Please try again.")
+                    st.stop()
+                st.session_state.questions = new_questions
             navigate_to("exam")
 
 
@@ -1323,6 +1340,87 @@ def render_exam_view():
             st.markdown("<div style='text-align:center;color:#8b8b9e;font-size:13px;'>📄 Last Page</div>", unsafe_allow_html=True)
 
 
+_REVIEW_PAGE_SIZE = 8
+
+
+def render_answer_review(questions: list, exam_answers: dict):
+    """Collapsible, paginated answer review — keeps the results page short.
+
+    The whole review lives under one header (collapsed by default). When opened
+    it shows one page of questions at a time with Prev/Next controls, so the
+    page never grows to 40-60 stacked cards.
+    """
+    total = len(questions)
+    if not total:
+        return
+    correct_count = sum(
+        1 for q in questions
+        if exam_answers.get(str(q.get("id")), "—") == q.get("correct_answer", "")
+    )
+    wrong_count = total - correct_count
+
+    open_key = "review_open"
+    page_key = "review_page"
+    is_open = st.session_state.get(open_key, False)
+
+    header = (f"📋 Answer Review — {total} questions  "
+              f"(✅ {correct_count} · ❌ {wrong_count})")
+    label = f"▼ {header}" if is_open else f"▶ {header}"
+    if st.button(label, use_container_width=True, key="review_toggle"):
+        st.session_state[open_key] = not is_open
+        st.session_state[page_key] = 0
+        st.rerun()
+
+    if not is_open:
+        return
+
+    total_pages = (total + _REVIEW_PAGE_SIZE - 1) // _REVIEW_PAGE_SIZE
+    page = max(0, min(st.session_state.get(page_key, 0), total_pages - 1))
+
+    # Page navigation (top)
+    nav_prev, nav_info, nav_next = st.columns([1, 2, 1])
+    with nav_prev:
+        if st.button("◀ Prev", use_container_width=True, disabled=(page == 0), key="rev_prev"):
+            st.session_state[page_key] = page - 1
+            st.rerun()
+    with nav_info:
+        start = page * _REVIEW_PAGE_SIZE + 1
+        end = min((page + 1) * _REVIEW_PAGE_SIZE, total)
+        st.markdown(
+            f"<div style='text-align:center;color:#8b8b9e;padding-top:6px;'>"
+            f"Questions {start}–{end} · Page {page + 1} of {total_pages}</div>",
+            unsafe_allow_html=True,
+        )
+    with nav_next:
+        if st.button("Next ▶", use_container_width=True, disabled=(page >= total_pages - 1), key="rev_next"):
+            st.session_state[page_key] = page + 1
+            st.rerun()
+
+    # Questions for this page only
+    for q in questions[page * _REVIEW_PAGE_SIZE:(page + 1) * _REVIEW_PAGE_SIZE]:
+        qid = str(q.get("id"))
+        user_ans = exam_answers.get(qid, "—")
+        correct = q.get("correct_answer", "")
+        is_correct = user_ans == correct
+        summary = "✅" if is_correct else "❌"
+        title = q.get("question", "").strip()
+        with st.expander(f"{summary} Q{qid}: {title[:70]}{'...' if len(title) > 70 else ''}", expanded=False):
+            st.write(q.get("question", ""))
+            for k, v in q.get("options", {}).items():
+                tag = ""
+                if k == correct:
+                    tag = " ✅ (Correct)"
+                if k == user_ans and k != correct:
+                    tag = " ❌ (Your answer)"
+                if k == user_ans and k == correct:
+                    tag = " ✅ (Your answer)"
+                st.write(f"{k}. {v}{tag}")
+            if q.get("explanation"):
+                st.caption(f"💡 {q.get('explanation')}")
+            if q.get("source"):
+                st.caption(f"📖 {q.get('source')}")
+
+
 def render_results_view():
     render_progress_strip(3)
     final_result = st.session_state.get("final_result", {})
@@ -1369,28 +1467,7 @@ def render_results_view():
     st.markdown("### ⚖️ Council Pass/Fail Analysis")
     render_council_exam_explanation(state, final_result)
     st.markdown("---")
-    for q in questions:
-        qid = str(q.get("id"))
-        user_ans = exam_answers.get(qid, "—")
-        correct = q.get("correct_answer", "")
-        is_correct = user_ans == correct
-        summary = f"✅" if is_correct else "❌"
-        title = q.get("question", "").strip()
-        with st.expander(f"{summary} Q{qid}: {title[:70]}{'...' if len(title) > 70 else ''}", expanded=not is_correct):
-            st.write(q.get("question", ""))
-            for k, v in q.get("options", {}).items():
-                tag = ""
-                if k == correct:
-                    tag = " ✅ (Correct)"
-                if k == user_ans and k != correct:
-                    tag = " ❌ (Your answer)"
-                if k == user_ans and k == correct:
-                    tag = " ✅ (Your answer)"
-                st.write(f"{k}. {v}{tag}")
-            if q.get("explanation"):
-                st.caption(f"💡 {q.get('explanation')}")
-            if q.get("source"):
-                st.caption(f"📖 {q.get('source')}")
+    render_answer_review(questions, exam_answers)
     st.markdown("---")
     tabs = st.tabs(["📅 Adapted Study Plan", "📚 Learning Resources", "🧠 Coaching", "📊 Manager View", "🏆 Reputation"])
     with tabs[0]:

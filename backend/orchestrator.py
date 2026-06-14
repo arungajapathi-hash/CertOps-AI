@@ -29,6 +29,10 @@ class Orchestrator:
         # so concurrent/sequential users never clobber each other's pipeline state.
         self._sessions: Dict[str, SharedMemory] = {}
         self.memory = SharedMemory()  # default/unbound memory
+        # Cache of generated learning resources keyed by cert + topic set, so the
+        # (slower) Foundry-grounded official lookup isn't repeated for the same
+        # certification across runs in this server session.
+        self._resource_cache: Dict[str, dict] = {}
         # Agents are created lazily to avoid LLM client initialization during import
         self.learning_agent = None
         self.study_plan_agent = None
@@ -331,17 +335,91 @@ class Orchestrator:
         cert = memory.get("certification", "")
         logger.debug(f"_fetch_learning_resources for {len(topics_to_fetch)} topics: {topics_to_fetch}")
 
+        # Session cache: reuse if we've already built resources for this exact
+        # certification + topic set (avoids repeating the Foundry official lookup).
+        cache_key = cert + "|" + "|".join(sorted(t.lower() for t in topics_to_fetch))
+        if cache_key in self._resource_cache:
+            logger.debug(f"Reusing cached learning resources for {cache_key[:60]}")
+            memory["learning_resources"] = self._resource_cache[cache_key]
+            return memory
+
+        # Base bundle: MVP / videos / practice are topic-specific search URLs.
         for topic in topics_to_fetch:
             resources[topic] = finder.find_resources(cert, topic)
-            r = resources[topic]
-            logger.debug(f"Resources for '{topic}': "
-                  f"official={len(r.get('official',[]))}, "
-                  f"mvp={len(r.get('mvp',[]))}, "
-                  f"videos={len(r.get('videos',[]))}, "
-                  f"practice={len(r.get('practice',[]))}")
 
+        # Official resources: the MS Learn Catalog API returns the same generic
+        # modules for every topic, so ground them in Foundry IQ instead — one
+        # call for all topics gives real, topic-specific learn.microsoft.com links.
+        try:
+            foundry_official = await asyncio.to_thread(
+                self._foundry_official_resources, cert, topics_to_fetch
+            )
+            for topic, items in foundry_official.items():
+                if items and topic in resources:
+                    resources[topic]["official"] = items
+        except Exception as e:
+            logger.debug(f"Foundry resource grounding failed, keeping deterministic: {e}")
+
+        self._resource_cache[cache_key] = resources
         memory["learning_resources"] = resources
         return memory
+
+    def _foundry_official_resources(self, cert: str, topics: list) -> dict:
+        """Ask Foundry IQ for official MS Learn resources per topic (one call).
+
+        Returns {topic: [{title, url, ...}]}. Only accepts real
+        learn.microsoft.com URLs so nothing hallucinated reaches the UI.
+        """
+        from backend.plugins.knowledge_router import get_knowledge_plugin
+        plugin = get_knowledge_plugin()
+        query = getattr(plugin, "query", None)
+        if not callable(query):
+            return {}
+
+        topic_list = "\n".join(f"- {t}" for t in topics)
+        prompt = (
+            f"For the {cert} certification, recommend 2-3 official Microsoft Learn "
+            f"modules or documentation pages for EACH topic below. Use only real "
+            f"learn.microsoft.com URLs grounded in the knowledge base.\n\n"
+            f"Topics:\n{topic_list}\n\n"
+            f"Return ONLY JSON mapping each topic to a list:\n"
+            f'{{"<topic name>": [{{"title": "...", "url": "https://learn.microsoft.com/..."}}]}}'
+        )
+        raw = query(prompt, isolation_suffix="resources") or ""
+        clean = raw.strip()
+        if clean.startswith("```"):
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        try:
+            data = json.loads(clean.strip())
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+
+        out = {}
+        lower_map = {k.lower(): v for k, v in data.items()}
+        for topic in topics:
+            items = data.get(topic) or lower_map.get(topic.lower()) or []
+            bundle = []
+            for it in (items if isinstance(items, list) else [])[:3]:
+                if not isinstance(it, dict):
+                    continue
+                url = str(it.get("url", "")).strip()
+                title = str(it.get("title", "")).strip()
+                if title and url.startswith("http") and "learn.microsoft.com" in url:
+                    bundle.append({
+                        "title": title,
+                        "url": url,
+                        "type": "MS Learn (Foundry IQ)",
+                        "source": "Microsoft Learn · Foundry IQ",
+                        "free": True,
+                        "verified": True,
+                    })
+            if bundle:
+                out[topic] = bundle
+        return out
 
     async def run_full_pipeline(
         self,
@@ -469,8 +547,24 @@ class Orchestrator:
         if progress_callback:
             await progress_callback("phase_done", "Readiness Council", 2, 6)
 
-        # PHASE 3: Assessment — generate questions
-        # Mark that assessment generation / exam phase is about to start
+        # PHASE 3: Assessment
+        if interactive_assessment:
+            # LAZY GENERATION — pause here WITHOUT generating questions. They are
+            # generated on demand when the learner clicks "Start Mock Exam", so
+            # this analysis stays fast (learning + council only).
+            report["phases"]["assessment"] = {
+                "status": "deferred",
+                "question_count": 0,
+                "questions": [],
+            }
+            report["status"] = "awaiting_assessment"
+            report["pipeline_paused_at"] = "assessment"
+            self.memory.update({"pipeline_state": "awaiting_assessment"})
+            if progress_callback:
+                await progress_callback("phase_done", "Readiness Council", 2, 6)
+            return report
+
+        # --- Auto mode (interactive_assessment=False): generate questions now ---
         self.memory.update({"pipeline_state": "exam_in_progress"})
         if progress_callback:
             await progress_callback("phase_start", "Assessment", 3, 6)
@@ -479,24 +573,8 @@ class Orchestrator:
         report["phases"]["assessment"] = {
             "status": "questions_ready",
             "question_count": len(assessment_result.get("questions", [])),
-            "questions": assessment_result.get("questions", [])  # ADD: send questions to frontend
+            "questions": assessment_result.get("questions", [])
         }
-
-        logger.debug(f"/assessment called — {len(assessment_result.get('questions', []))} questions ready")
-
-        if interactive_assessment:
-            # STOP HERE — return partial report
-            # Frontend will show interactive quiz
-            report["status"] = "awaiting_assessment"
-            report["pipeline_paused_at"] = "assessment"
-            self.memory.update({"pipeline_state": "awaiting_assessment"})
-            logger.debug(f"Pipeline paused for interactive assessment")
-
-            if progress_callback:
-                await progress_callback("phase_done", "Assessment", 3, 6)
-            return report
-
-        # --- Below only runs when interactive_assessment=False (auto mode) ---
         if progress_callback:
             await progress_callback("phase_done", "Assessment", 3, 6)
 
